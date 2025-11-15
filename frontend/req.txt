@@ -1,0 +1,19 @@
+# что нужно поставить при нехватке библиотек на фронте
+
+# State management
+npm install zustand 
+
+# Icons
+npm install lucide-react
+
+# Utilities
+npm install clsx
+
+# Video player
+npm install react-player
+
+# Intersection Observer (infinite scroll)
+npm install react-intersection-observer
+
+# Dev dependencies (если нужны)
+npm install -D @type/node
