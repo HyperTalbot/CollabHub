@@ -1,61 +1,97 @@
-// // /frontend/context/ThemeContext.tsx
-// "use client";
+// frontend/context/ThemeContext.tsx
+"use client";
 
-// import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
-// type Theme = 'light' | 'dark';
+type Theme = 'light' | 'dark' | 'system';
 
-// interface ThemeContextType {
-//   theme: Theme;
-//   toggleTheme: () => void;
-//   setTheme: (theme: Theme) => void;
-// }
+interface ThemeContextType {
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  toggleTheme: () => void;
+  effectiveTheme: 'light' | 'dark'; // Реальная тема (после обработки 'system')
+}
 
-// const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-// export function ThemeProvider({ children }: { children: React.ReactNode }) {
-//   const [theme, setThemeState] = useState<Theme>('light');
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setThemeState] = useState<Theme>('system');
+  const [mounted, setMounted] = useState(false);
 
-//   // Устанавливает класс на <html> и сохраняет в localStorage
-//   const applyTheme = useCallback((newTheme: Theme) => {
-//     localStorage.setItem('theme', newTheme);
-//     document.documentElement.classList.remove('light', 'dark');
-//     document.documentElement.classList.add(newTheme);
-//     setThemeState(newTheme);
-//   }, []);
+  // 1️⃣ При монтировании загружаем тему из localStorage
+  useEffect(() => {
+    setMounted(true);
+    const savedTheme = localStorage.getItem('theme') as Theme | null;
+    if (savedTheme) {
+      setThemeState(savedTheme);
+    }
+  }, []);
 
-//   // Инициализация темы при первой загрузке
-//   useEffect(() => {
-//     const savedTheme = localStorage.getItem('theme') as Theme | null;
-//     if (savedTheme) {
-//       applyTheme(savedTheme);
-//     } else {
-//       // Использование системных настроек по умолчанию
-//       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-//       applyTheme(prefersDark ? 'dark' : 'light');
-//     }
-//   }, [applyTheme]);
+  // 2️⃣ Определяем эффективную тему (light или dark)
+  const getEffectiveTheme = (): 'light' | 'dark' => {
+    if (theme === 'system') {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return theme;
+  };
 
-//   // Функция для переключения
-//   const toggleTheme = () => {
-//     const newTheme = theme === 'light' ? 'dark' : 'light';
-//     applyTheme(newTheme);
-//   };
-  
-//   // Функция для установки (если нужно)
-//   const setTheme = (newTheme: Theme) => applyTheme(newTheme);
+  const effectiveTheme = mounted ? getEffectiveTheme() : 'light';
 
-//   return (
-//     <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
-//       {children}
-//     </ThemeContext.Provider>
-//   );
-// }
+  // 3️⃣ КРИТИЧНО: Применяем класс 'dark' к <html>
+  useEffect(() => {
+    if (!mounted) return;
 
-// export function useTheme() {
-//   const context = useContext(ThemeContext);
-//   if (context === undefined) {
-//     throw new Error('useTheme must be used within a ThemeProvider');
-//   }
-//   return context;
-// }
+    const root = document.documentElement;
+    const isDark = effectiveTheme === 'dark';
+
+    if (isDark) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+
+    // Сохраняем в localStorage
+    localStorage.setItem('theme', theme);
+  }, [theme, effectiveTheme, mounted]);
+
+  // 4️⃣ Слушаем системные изменения темы
+  useEffect(() => {
+    if (theme !== 'system') return;
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = () => {
+      setThemeState('system'); // Триггерим re-render
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [theme]);
+
+  const setTheme = (newTheme: Theme) => {
+    setThemeState(newTheme);
+  };
+
+  const toggleTheme = () => {
+    const newTheme = effectiveTheme === 'dark' ? 'light' : 'dark';
+    setThemeState(newTheme);
+  };
+
+  // Избегаем гидратации ошибок
+  if (!mounted) {
+    return <>{children}</>;
+  }
+
+  return (
+    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme, effectiveTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    throw new Error('useTheme must be used within ThemeProvider');
+  }
+  return context;
+}

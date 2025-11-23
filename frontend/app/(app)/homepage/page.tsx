@@ -2,13 +2,6 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-// import axios from '@/lib/axiosInstance';
-// import { useAuth } from '@/context/AuthContext';
-// import CreatePostForm from '@/components/create/CreatePostForm';
-// import LikeButton from '@/components/shared/LikeButton';
-// import ShareButton from '@/components/shared/ShareButton';
-// import CommentSection from '@/components/comment/CommentSection';
-// import { MessageCircle } from 'lucide-react';
 
 const POSTS_API_URL = 'http://localhost:8081/api/v1/posts/';
 

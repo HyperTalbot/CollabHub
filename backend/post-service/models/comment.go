@@ -17,8 +17,9 @@ type Comment struct {
 	DeletedAt *gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 
 	// Виртуальные поля для отображения на фронте (аналогично посту)
-	LikesCount  int64 `gorm:"-" json:"likes_count"`
-	IsLikedByMe bool  `gorm:"-" json:"is_liked_by_me"`
+	UserUsername string `gorm:"-" json:"user_username,omitempty"`
+	LikesCount   int64  `gorm:"-" json:"likes_count"`
+	IsLikedByMe  bool   `gorm:"-" json:"is_liked_by_me"`
 	// Здесь также может быть User, чтобы получить имя пользователя, но пока оставим ID
 
 	// Это поле будет содержать всех детей комментария (заполняется вручную)

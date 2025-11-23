@@ -23,25 +23,25 @@ const buttons = [
     mode: 'short', 
     icon: Camera, 
     label: 'Клип', 
-    transform: 'translate-x-[-108px] translate-y-[94px]' 
+    transform: 'translate-x-[-102px] translate-y-[100px]' 
   },
   { 
     mode: 'stream', 
     icon: Mic, 
     label: 'Стрим', 
-    transform: 'translate-x-[-48px] translate-y-[134px]' 
+    transform: 'translate-x-[-42px] translate-y-[136px]' 
   },
   { 
     mode: 'post', 
     icon: Edit3, 
     label: 'Пост', 
-    transform: 'translate-x-[48px] translate-y-[134px]' 
+    transform: 'translate-x-[42px] translate-y-[136px]' 
   },
   { 
     mode: 'music', 
     icon: Music, 
     label: 'Музыка', 
-    transform: 'translate-x-[108px] translate-y-[94px]' 
+    transform: 'translate-x-[102px] translate-y-[100px]' 
   },
   { 
     mode: 'dm', 

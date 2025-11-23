@@ -5,23 +5,45 @@ import React, { useState } from 'react';
 import axios from '@/lib/axiosInstance'; // <-- Наш настроенный axios
 import { useAuth } from '@/context/AuthContext';
 import AuthModal from '@/components/auth/AuthModal';
-import { title } from 'process';
+// import ReactMde from "react-mde"; // 1. Импорт редактора
+import { useTheme } from '@/context/ThemeContext'; // <-- 1. Импортируем тему для редактора
+import "react-mde/lib/styles/css/react-mde-all.css"; // 2. Стили
+// import * as Showdown from "showdown"; // 3. Конвертер
+// 2. Импорт нового редактора
+import MDEditor from "@uiw/react-md-editor";
 
 // Адрес нашего Posts Service
 const POSTS_API_URL = 'http://localhost:8081/api/v1/posts/';
 
-// Пропс, чтобы главная страница могла обновить ленту
+// // 4. Инициализация конвертера Markdown -> HTML (для превью)
+// const converter = new Showdown.Converter({
+//   tables: true,
+//   simplifiedAutoLink: true,
+//   strikethrough: true,
+//   tasklists: true,
+// });
+
 interface CreatePostFormProps {
-  onPostCreated: () => void;
+  onPostCreated: () => void; // Функция для обновления ленты
+  onClose: () => void;
 }
 
-export default function CreatePostForm({ onPostCreated }: CreatePostFormProps) {
+export default function CreatePostForm({ onPostCreated, onClose }: CreatePostFormProps) {
+  const { isLoggedIn } = useAuth();
+  const { theme } = useTheme(); // <-- Получаем текущую тему (light/dark)
+
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  // const [content, setContent] = useState('');
+  const [imageUrl, setImageUrl] = useState(''); // 5. Новое состояние
+  const [content, setContent] = useState("Привет, мир!"); // 6. Markdown контент
+
+  // 7. Состояние для вкладок "Write" | "Preview"
+  const [selectedTab, setSelectedTab] = useState<"write" | "preview">("write");
+
   const [error, setError] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
   
-  const { isLoggedIn } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,59 +55,89 @@ export default function CreatePostForm({ onPostCreated }: CreatePostFormProps) {
       return;
     }
 
-    try {
-      const response = await axios.post(POSTS_API_URL, {
-        title: title,
-        content: content,
-      });
+    setLoading(true);
 
-      if (response.status === 201) {
-        setTitle(''); 
-        setContent(''); // Очищаем поле
-        onPostCreated(); // Сообщаем родительской странице, что пост создан
-      }
-    } catch (err) {
-      console.error(err);
-      setError('Не удалось создать пост. Попробуйте снова.');
+    try {
+      await axios.post(POSTS_API_URL, {
+        title: title,
+        content: content, // Отправляем Markdown
+        image_url: imageUrl, // 8. Отправляем URL
+      });
+      
+      onPostCreated(); // Обновляем ленту
+      onClose(); // Закрываем модалку
+
+    } catch (err: any) {
+      console.error("Failed to create post:", err);
+      setError(err.response?.data?.error || "Произошла ошибка при создании поста.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="bg-white p-4 shadow-md rounded-lg mb-6">
-        <h2 className="text-lg text-black font-semibold mb-3">Создать пост</h2>
-        {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <p className="text-red-500 text-sm">{error}</p>}
         
-        <input 
-          type='text'
-          className='shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-3'
-          placeholder='Заголовок поста'
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-        />
+        {/* Поле Заголовка */}
+        <div>
+          <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Заголовок
+          </label>
+          <input
+            type="text"
+            id="title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-black"
+            required
+          />
+        </div>
 
-        <textarea
-          className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-          rows={3}
-          placeholder="Что у вас нового?"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          minLength={5}
-          required
-        />
+        {/* Поле Картинки */}
+        <div>
+          <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            URL Изображения (необязательно)
+          </label>
+          <input
+            type="text"
+            id="imageUrl"
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 text-black"
+            placeholder="https://example.com/image.png"
+          />
+        </div>
+
+        {/* Поле Markdown (Новый редактор) */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Содержание (Markdown)
+          </label>
+          
+          {/* Атрибут data-color-mode автоматически меняет тему редактора */}
+          <div data-color-mode={theme}>
+            <MDEditor
+              value={content}
+              onChange={(val) => setContent(val || '')}
+              height={200} // Фиксированная высота
+              preview="edit" // По умолчанию режим редактирования
+            />
+          </div>
+        </div>
 
         <div className="flex justify-end mt-3">
           <button
             type="submit"
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+            disabled={loading}
+            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
           >
-            Опубликовать
+            {loading ? 'Публикация...' : 'Опубликовать'}
           </button>
         </div>
       </form>
 
-      {/* Модальное окно для неавторизованных пользователей */}
       <AuthModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
@@ -93,3 +145,257 @@ export default function CreatePostForm({ onPostCreated }: CreatePostFormProps) {
     </>
   );
 }
+
+
+
+// // /frontend/components/create/CreatePostForm.tsx
+// "use client";
+
+// import React, { useState } from 'react';
+// import axios from '@/lib/axiosInstance';
+// import { useAuth } from '@/context/AuthContext';
+// import ReactMde from "react-mde"; // 1. Импорт редактора
+// import "react-mde/lib/styles/css/react-mde-all.css"; // 2. Стили
+// import * as Showdown from "showdown"; // 3. Конвертер
+
+// const POSTS_API_URL = 'http://localhost:8081/api/v1/posts';
+
+// // 4. Инициализация конвертера Markdown -> HTML (для превью)
+// const converter = new Showdown.Converter({
+//   tables: true,
+//   simplifiedAutoLink: true,
+//   strikethrough: true,
+//   tasklists: true,
+// });
+
+// interface CreatePostFormProps {
+//   onPostCreated: () => void; // Функция для обновления ленты
+//   onClose: () => void;
+// }
+
+// export default function CreatePostForm({ onPostCreated, onClose }: CreatePostFormProps) {
+//   const { isLoggedIn } = useAuth();
+//   const [title, setTitle] = useState('');
+//   const [imageUrl, setImageUrl] = useState(''); // 5. Новое состояние
+//   const [content, setContent] = useState("Привет, мир!"); // 6. Markdown контент
+  
+//   // 7. Состояние для вкладок "Write" | "Preview"
+//   const [selectedTab, setSelectedTab] = useState<"write" | "preview">("write");
+
+//   const [error, setError] = useState('');
+//   const [loading, setLoading] = useState(false);
+
+//   const handleSubmit = async (e: React.FormEvent) => {
+//     e.preventDefault();
+//     if (!isLoggedIn) { /* ... */ }
+//     if (!title.trim() || !content.trim()) { /* ... */ }
+
+//     setLoading(true);
+//     setError('');
+
+//     try {
+//       await axios.post(POSTS_API_URL, {
+//         title: title,
+//         content: content,
+//         image_url: imageUrl, // 8. Отправляем URL
+//       });
+      
+//       onPostCreated(); // Обновляем ленту
+//       onClose(); // Закрываем модалку
+
+//     } catch (err: any) {
+//       console.error("Failed to create post:", err);
+//       setError(err.response?.data?.error || "Произошла ошибка при создании поста.");
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   return (
+//     <form onSubmit={handleSubmit} className="space-y-4">
+//       {error && <p className="text-red-500 text-sm">{error}</p>}
+      
+//       <div>
+//         <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+//           Заголовок
+//         </label>
+//         <input
+//           type="text"
+//           id="title"
+//           value={title}
+//           onChange={(e) => setTitle(e.target.value)}
+//           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-black"
+//           required
+//         />
+//       </div>
+
+//       <div>
+//         <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+//           URL Изображения (необязательно)
+//         </label>
+//         <input
+//           type="text"
+//           id="imageUrl"
+//           value={imageUrl}
+//           onChange={(e) => setImageUrl(e.target.value)}
+//           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-black"
+//           placeholder="https://example.com/image.png"
+//         />
+//       </div>
+
+//       <div>
+//         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+//           Содержание (Markdown)
+//         </label>
+//         {/* 9. ЗАМЕНА <textarea> на <ReactMde> */}
+//         <div className="mt-1 text-black">
+//           <ReactMde
+//             value={content}
+//             onChange={setContent}
+//             selectedTab={selectedTab}
+//             onTabChange={setSelectedTab}
+//             generateMarkdownPreview={(markdown) =>
+//               Promise.resolve(converter.makeHtml(markdown))
+//             }
+//           />
+//         </div>
+//       </div>
+
+//       <div className="flex justify-end space-x-2">
+//         {/* ... (Кнопки Отмена и Опубликовать) ... */}
+//       </div>
+//     </form>
+//   );
+// }
+
+
+
+// // /frontend/components/create/CreatePostForm.tsx
+// "use client";
+
+// import React, { useState } from 'react';
+// import axios from '@/lib/axiosInstance';
+// import { useAuth } from '@/context/AuthContext';
+// import AuthModal from '@/components/auth/AuthModal';
+// // УДАЛЕНО: import { title } from 'process'; (Это была ошибка)
+
+// // 1. Импорт нового редактора
+// import MDEditor from "@uiw/react-md-editor";
+// import { useTheme } from '@/context/ThemeContext'; // Для поддержки темной темы
+
+// const POSTS_API_URL = 'http://localhost:8081/api/v1/posts/';
+
+// interface CreatePostFormProps {
+//   onPostCreated: () => void;
+//   onClose: () => void;
+// }
+
+// export default function CreatePostForm({ onPostCreated, onClose }: CreatePostFormProps) {
+//   const { isLoggedIn } = useAuth();
+//   const { theme } = useTheme(); // Получаем текущую тему
+
+//   const [title, setTitle] = useState('');
+//   const [imageUrl, setImageUrl] = useState('');
+//   const [content, setContent] = useState("Привет, мир!"); // Markdown контент
+
+//   const [error, setError] = useState('');
+//   const [isModalOpen, setIsModalOpen] = useState(false);
+//   const [loading, setLoading] = useState(false);
+
+//   const handleSubmit = async (e: React.FormEvent) => {
+//     e.preventDefault();
+//     setError('');
+
+//     if (!isLoggedIn) {
+//       setIsModalOpen(true);
+//       return;
+//     }
+
+//     setLoading(true);
+    
+//     try {
+//       await axios.post(POSTS_API_URL, {
+//         title: title,
+//         content: content,
+//         image_url: imageUrl,
+//       });
+      
+//       onPostCreated();
+//       onClose();
+
+//     } catch (err: any) {
+//       console.error("Failed to create post:", err);
+//       setError(err.response?.data?.error || "Произошла ошибка при создании поста.");
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   return (
+//     <>
+//       <form onSubmit={handleSubmit} className="space-y-4">
+//         {error && <p className="text-red-500 text-sm">{error}</p>}
+        
+//         <div>
+//           <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+//             Заголовок
+//           </label>
+//           <input
+//             type="text"
+//             id="title"
+//             value={title}
+//             onChange={(e) => setTitle(e.target.value)}
+//             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-black p-2"
+//             required
+//           />
+//         </div>
+
+//         <div>
+//           <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+//             URL Изображения (необязательно)
+//           </label>
+//           <input
+//             type="text"
+//             id="imageUrl"
+//             value={imageUrl}
+//             onChange={(e) => setImageUrl(e.target.value)}
+//             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-black p-2"
+//             placeholder="https://example.com/image.png"
+//           />
+//         </div>
+
+//         <div>
+//           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+//             Содержание (Markdown)
+//           </label>
+          
+//           {/* 2. Использование нового редактора */}
+//           {/* data-color-mode автоматически переключает стили редактора */}
+//           <div data-color-mode={theme}>
+//             <MDEditor
+//               value={content}
+//               onChange={(val) => setContent(val || '')}
+//               height={200} // Фиксированная высота
+//               preview="edit" // По умолчанию режим редактирования
+//             />
+//           </div>
+//         </div>
+
+//         <div className="flex justify-end mt-3">
+//           <button
+//             type="submit"
+//             disabled={loading}
+//             className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
+//           >
+//             {loading ? 'Публикация...' : 'Опубликовать'}
+//           </button>
+//         </div>
+//       </form>
+
+//       <AuthModal 
+//         isOpen={isModalOpen} 
+//         onClose={() => setIsModalOpen(false)} 
+//       />
+//     </>
+//   );
+// }

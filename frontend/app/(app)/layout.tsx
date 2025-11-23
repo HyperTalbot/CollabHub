@@ -6,7 +6,11 @@ import { useRouter } from 'next/navigation';
 import Cookies from "js-cookie";
 // import { useAuth } from '@/context/AuthContext';
 import AppHeader from '@/components/layout/AppHeader';
-import { ThemeProvider } from "@/context/ThemeContext";
+import { AuthProvider } from '@/context/AuthContext'; // <-- Создайте алиас или используйте полный путь
+// import './globals.css'; // Ваш файл стилей Tailwind
+import { ThemeProvider } from '@/context/ThemeContext';
+import { Toaster } from "react-hot-toast";
+import { WebSocketProvider } from "@/context/WebSocketContext";
 
 const PANEL1_HEIGHT = 72; // (h-16 + p-2 + space-y-2)
 const PANEL2_HEIGHT = 56; // (h-12 + p-0 + space-y-2)
@@ -43,28 +47,40 @@ export default function AppLayout({
   };
 
   return (
-    // <ThemeProvider>
-      <div className="min-h-screen bg-gray-50">
-        {/* ===== Шапка (Header) ===== */}
-        <AppHeader
-          panel1Visible={panel1Visible}
-          setPanel1Visible={setPanel1Visible}
-          setPanel2Visible={setPanel2Visible}
-          panel2Visible={panel2Visible}
-        />
 
-        {/* ===== Основной контент страницы ===== */}
-        <main 
-          className="container mx-auto p-4 transition-all duration-300"
-          style={{ paddingTop: `${calculatePadding()}px` }}>
-          {children} 
-        </main>
-        
-        {/* ===== (Опционально) Боковая панель (Sidebar) ===== */}
-        {/* Можно добавить <aside>...</aside> и использовать flex/grid 
-          для компоновки Sidebar + Main 
-        */}
-      </div>
-    // </ThemeProvider>
+    // <ThemeProvider> {/* Обертываем все приложение в AuthProvider */} {/* <AuthProvider>  */}
+        <WebSocketProvider>
+                
+          <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+            {/* ===== Шапка (Header) ===== */}
+            <AppHeader
+              panel1Visible={panel1Visible}
+              setPanel1Visible={setPanel1Visible}
+              setPanel2Visible={setPanel2Visible}
+              panel2Visible={panel2Visible}
+              />
+
+            {/* ===== Основной контент страницы ===== */}
+            <main 
+              className="container mx-auto p-4 transition-all duration-300"
+              style={{ paddingTop: `${calculatePadding()}px` }}>
+              {children} 
+            </main>
+            <Toaster 
+              position='top-center'
+              reverseOrder={false}
+              toastOptions={{ style: {
+                borderRadius: '12px',
+                background: '#333',
+                color: '#fff',
+              }}}
+            />
+            {/* ===== (Опционально) Боковая панель (Sidebar) ===== */}
+            {/* Можно добавить <aside>...</aside> и использовать flex/grid 
+              для компоновки Sidebar + Main 
+              */}
+          </div>
+        </WebSocketProvider>
+        // {/* </AuthProvider> */} {/* </ThemeProvider> */}
   );
 }

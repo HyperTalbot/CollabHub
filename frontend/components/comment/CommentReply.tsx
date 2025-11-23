@@ -5,16 +5,19 @@ import React, { useState } from 'react';
 import { ChevronDown, MessageSquare } from 'lucide-react';
 import Comment, { CommentType } from '@/components/comment/Comment'; // Используем наш основной компонент Comment
 import CommentReplyForm from "@/components/comment/CommentReplyForm";
+import Link from "next/link";
 
 // Максимальная глубина, после которой требуется отдельная страница
-const MAX_DEPTH = 3;
+const MAX_DEPTH = 5;
 // Количество ответов, которое показывается сразу
 const INITIAL_REPLIES_SHOW = 3;
 // Количество ответов для показа при нажатии "Показать еще"
-const PAGINATION_STEP = 5;
+const PAGINATION_STEP = 3;
 
 interface CommentReplyProps {
   comment: CommentType;
+  // currentDepth: number;
+  postID: number;
   onReplyClick: (parentId: number) => void;
   // ID комментария, на который отвечают
   activeReplyId: number | null;
@@ -25,7 +28,7 @@ interface CommentReplyProps {
 }
 
 // РЕКУРСИВНЫЙ КОМПОНЕНТ
-export default function CommentReply({ comment, onReplyClick, activeReplyId, onCancelReply, onSubmitReply }: CommentReplyProps) {
+export default function CommentReply({ comment, postID, onReplyClick, activeReplyId, onCancelReply, onSubmitReply }: CommentReplyProps) {
   // Управляет пагинацией вложенных ответов
   const [repliesToShow, setRepliesToShow] = useState(INITIAL_REPLIES_SHOW);
 
@@ -44,9 +47,9 @@ export default function CommentReply({ comment, onReplyClick, activeReplyId, onC
   if (currentDepth > MAX_DEPTH) {
     // Если глубина превышена, показываем заглушку
     return (
-      <div className="ml-4 p-2 bg-yellow-50 rounded-md border border-yellow-200">
-        <MessageSquare size={16} className="inline mr-2 text-yellow-600" />
-        <span className="text-sm text-black">Дискуссия слишком глубока. <a href={`/comment/${comment.id}`} className="text-blue-500 hover:underline">Перейти на страницу комментария</a> для продолжения.</span>
+      <div className="ml-4 p-2 bg-blue-50 rounded-md border border-blue-200">
+        <MessageSquare size={16} className="inline mr-2 text-blue-600" />
+        <span className="text-sm text-black">Дискуссия слишком глубока. <Link href={`/postogram/${postID}/comment/${comment.id}`} className="text-blue-500 hover:underline">Перейти на страницу комментария</Link> для продолжения.</span>
       </div>
     );
   }
@@ -75,6 +78,8 @@ export default function CommentReply({ comment, onReplyClick, activeReplyId, onC
           <CommentReply 
             key={reply.id} 
             comment={reply} 
+            postID={postID}
+            // currentDepth={currentDepth}
             onReplyClick={onReplyClick} 
             activeReplyId={activeReplyId}
             onCancelReply={onCancelReply}

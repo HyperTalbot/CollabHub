@@ -61,12 +61,16 @@ func main() {
 		}
 
 		comments := apiV1.Group("/comments")
-
-		comments.Use(middlewares.AuthRequired())
 		{
+
+			// comments.Use(middlewares.AuthRequired())
 			// :id здесь - это ID комментария
-			comments.POST("/:id/like", commentHandler.LikeComment)
-			comments.DELETE("/:id/like", commentHandler.UnlikeComment)
+			comments.POST("/:id/like", middlewares.AuthRequired(), commentHandler.LikeComment)
+			comments.DELETE("/:id/like", middlewares.AuthRequired(), commentHandler.UnlikeComment)
+
+			// Получение ветки публичный/опциональный роут
+			// Используем AuthOptional, чтобы он мог обогатить "is_liked_by_me", если пользователь залогинен
+			comments.GET("/:id/thread", middlewares.AuthOptional(), commentHandler.GetCommentThread)
 		}
 
 	}

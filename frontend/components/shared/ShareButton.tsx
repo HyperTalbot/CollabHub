@@ -1,48 +1,56 @@
-// /frontend/components/ShareButton.tsx
+// /frontend/components/shared/ShareButton.tsx
 "use client";
 
 import React, { useState } from 'react';
-import { Share2, Link } from 'lucide-react'; // Предполагая, что вы используете lucide-react (или другой иконочный пакет)
+import Image from 'next/image';
 
 interface ShareButtonProps {
-  postId: number;
+  postId: number; // ID поста, которым делимся
 }
 
 export default function ShareButton({ postId }: ShareButtonProps) {
+  // Состояние для отображения "Скопировано!"
   const [copied, setCopied] = useState(false);
 
   const handleShare = () => {
-    // В реальном приложении это будет полный URL поста
+    // 1. Формируем URL
+    // window.location.origin дает "http://localhost:3000"
     const postUrl = `${window.location.origin}/postogram/${postId}`;
-    
-    // Копируем URL в буфер обмена
-    navigator.clipboard.writeText(postUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000); // Скрываем сообщение через 2 секунды
-    }).catch(err => {
-      console.error('Не удалось скопировать URL:', err);
-    });
+
+    // 2. Используем 'navigator.clipboard' (работает на HTTPS и localhost)
+    navigator.clipboard.writeText(postUrl)
+      .then(() => {
+        // 3. Показываем уведомление
+        setCopied(true);
+        // 4. Сбрасываем уведомление через 2 секунды
+        setTimeout(() => {
+          setCopied(false);
+        }, 2000);
+      })
+      .catch(err => {
+        console.error('Failed to copy link: ', err);
+        alert('Не удалось скопировать ссылку.');
+      });
   };
 
   return (
-    <div className="relative">
-      <button
-        onClick={handleShare}
-        className="flex items-center space-x-1 text-sm text-gray-500 hover:text-blue-500 transition-colors"
-        title="Поделиться"
-      >
-        {copied ? (
-          <>
-            <Link size={16} />
-            <span>Ссылка скопирована!</span>
-          </>
-        ) : (
-          <>
-            <Share2 size={16} />
-            <span>Поделиться</span>
-          </>
-        )}
-      </button>
-    </div>
+    <button 
+      onClick={handleShare}
+      className="flex items-center text-sm text-gray-500 hover:text-blue-500 dark:text-gray-400 dark:hover:text-blue-400 transition-colors"
+    >
+      <div className="relative" style={{ width: 18, height: 18 }}>
+        <Image 
+            src="/icons/share.svg" // <-- Убедитесь, что эта иконка у вас есть
+            alt="Поделиться" 
+            layout="fill" 
+            objectFit="contain"
+        />
+      </div>
+      
+      {/* 5. Меняем текст кнопки в зависимости от состояния 'copied' */}
+      <span className="ml-1.5">
+        {copied ? 'Скопировано!' : 'Поделиться'}
+      </span>
+    </button>
   );
 }

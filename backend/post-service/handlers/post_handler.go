@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"backend/post-service/models"
+	"backend/post-service/utils"
+	"errors"
+
 	"net/http"
 	"strconv"
 
@@ -20,8 +23,9 @@ func NewPostHandler(db *gorm.DB) *PostHandler {
 
 // Структура для входящих данных при создании поста
 type CreatePostInput struct {
-	Title   string `json:"title" binding:"required,min=3"`
-	Content string `json:"content" binding:"required,min=5"`
+	Title    string `json:"title" binding:"required,min=3"`
+	Content  string `json:"content" binding:"required,min=5"`
+	ImageURL string `json:"image_url,omitempty"`
 }
 
 // Создает новый пост в БД
@@ -48,9 +52,10 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 	}
 
 	post := models.Post{
-		UserID:  userID,
-		Title:   input.Title,
-		Content: input.Content,
+		UserID:   userID,
+		Title:    input.Title,
+		Content:  input.Content,
+		ImageURL: input.ImageURL,
 	}
 
 	if err := h.DB.Create(&post).Error; err != nil {
@@ -135,12 +140,70 @@ func (h *PostHandler) GetPosts(c *gin.Context) {
 
 	// Обогащаем наши посты данными из карт
 	for i := range posts {
+		posts[i].UserUsername = utils.GetUsernameByID(posts[i].UserID)
 		posts[i].LikesCount = likesCountMap[posts[i].ID]
 		posts[i].IsLikedByMe = userLikesMap[posts[i].ID]
 		posts[i].CommentsCount = commentCountMap[posts[i].ID]
 	}
 
 	c.JSON(http.StatusOK, posts)
+}
+
+func (h *PostHandler) GetPostByID(c *gin.Context) {
+	postID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+
+	// 1. Получаем ID пользователя (если он есть) для "IsLikedByMe"
+	userID_interface, exists := c.Get("userID")
+	var userID uint
+	if exists {
+		switch v := userID_interface.(type) {
+		case uint:
+			userID = v
+		case float64:
+			userID = uint(v)
+		case int:
+			userID = uint(v)
+		case int64:
+			userID = uint(v)
+		}
+	}
+
+	var post models.Post
+	if err := h.DB.First(&post, postID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch post"})
+		}
+		return
+	}
+
+	// 2. Обогащаем пост (Вы забыли это сделать)
+	post.UserUsername = utils.GetUsernameByID(post.UserID)
+
+	// 3. Считаем лайки (N+1, но для одного поста это нормально)
+	var likesCount int64
+	h.DB.Model(&models.Like{}).Where("post_id = ?", post.ID).Count(&likesCount)
+	post.LikesCount = likesCount
+
+	// 4. Считаем комменты
+	var commentsCount int64
+	h.DB.Model(&models.Comment{}).Where("post_id = ?", post.ID).Count(&commentsCount)
+	post.CommentsCount = commentsCount
+
+	// 5. Проверяем, лайкнул ли ЕГО пользователь
+	if userID > 0 {
+		var like models.Like
+		if h.DB.Where("post_id = ? AND user_id = ?", post.ID, userID).First(&like).Error == nil {
+			post.IsLikedByMe = true
+		}
+	}
+
+	c.JSON(http.StatusOK, post)
 }
 
 func (h *PostHandler) LikePost(c *gin.Context) {

@@ -24,3 +24,72 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Плавная прокрутка */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Анимация для секций */
+.platform-section {
+  scroll-snap-align: start;
+}
+
+/* Контейнер для scroll snap */
+body {
+  scroll-snap-type: y proximity;
+}
+
+/* Пульсация для звёзд */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Bounce для ракеты */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+/* Градиентная анимация */
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Custom Scrollbar for Discord-like appearance */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px; /* Ширина скроллбара */
+  height: 8px; /* Высота для горизонтального скроллбара */
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #36393f; /* Цвет фона трека (темный, как в Discord) */
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #202225; /* Цвет ползунка (еще темнее) */
+  border-radius: 10px;
+  border: 2px solid #36393f; /* Отступ вокруг ползунка */
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #3b3d40; /* Цвет ползунка при наведении */
+}

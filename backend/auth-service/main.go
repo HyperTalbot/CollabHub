@@ -24,6 +24,7 @@ func main() {
 
 	// Создаем обработчик AuthHandler, передавая ему подключение к БД
 	authHandler := handlers.NewAuthHandler(db.DB)
+	userHandler := handlers.UserHandler{DB: db.DB}
 
 	// Инициализируем роутер Gin
 	r := gin.Default()
@@ -56,14 +57,20 @@ func main() {
 			auth.POST("/login", authHandler.Login)
 		}
 
-		// (Здесь мы добавим /users/me)
+		// --- 2. ПУБЛИЧНЫЕ/ВНУТРЕННИЕ роуты пользователей ---
+		// (Используются сервисом 'post-service')
 		users := apiV1.Group("/users")
-		// Применяем мидлвар AuthRequired ко всем роутам в этой группе
-
-		users.Use(middleware.AuthRequired())
 		{
-			users.GET("/me", authHandler.GetMe)
-			// users.PUT("/me", authHandler.UpdateProfile) // Будущий роут
+			users.GET("/:id", userHandler.GetUserByID)
+		}
+
+		// --- 3. ЗАЩИЩЕННЫЕ роуты (Требуют JWT) ---
+		protected := apiV1.Group("/")
+		protected.Use(middleware.AuthRequired())
+		{
+			// Теперь /users/me защищен, а /users/:id - нет.
+			protected.GET("/users/me", authHandler.GetMe)
+			// protected.PUT("/users/me", authHandler.UpdateProfile) // Будущий роут
 		}
 	}
 
