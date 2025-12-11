@@ -3,7 +3,10 @@ package handlers
 import (
 	"backend/auth-service/models"
 	"backend/auth-service/utils"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -97,7 +100,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// Генерируем JWT
-	token, err := utils.GenerateToken(user.ID, user.Username)
+	token, err := utils.GenerateToken(user.ID, user.Username, user.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token."})
 		return
@@ -131,4 +134,99 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 
 	// Возвращаем данные пользователя
 	c.JSON(http.StatusOK, user)
+}
+
+// ChangePassword (Если пользователь залогинен)
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	userID, _ := c.Get("userID")
+	var input struct {
+		OldPassword string `json:"old_password" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required,min=6"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var user models.User
+	if err := h.DB.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Проверка старого пароля
+	if !utils.CheckPasswordHash(input.OldPassword, user.PasswordHash) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect old password"})
+		return
+	}
+
+	// Хешируем новый
+	newHash, _ := utils.HashPassword(input.NewPassword)
+	h.DB.Model(&user).Update("password_hash", newHash)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password updated"})
+}
+
+// ForgotPassword (Генерация токена)
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var input struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var user models.User
+	if err := h.DB.Where("email = ?", input.Email).First(&user).Error; err != nil {
+		// По безопасности лучше отвечать "Если email существует, мы отправили письмо"
+		// Но для отладки пока вернем ошибку
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Генерируем случайный токен
+	bytes := make([]byte, 16)
+	rand.Read(bytes)
+	token := hex.EncodeToString(bytes)
+
+	// Сохраняем в БД (срок жизни 1 час)
+	user.ResetToken = token
+	user.ResetTokenExpires = time.Now().Add(1 * time.Hour)
+	h.DB.Save(&user)
+
+	// TODO: Здесь должна быть отправка Email (SMTP)
+	// Пока выводим в консоль
+	println("=====================================")
+	println("RESET LINK: http://localhost:3000/reset-password?token=" + token)
+	println("=====================================")
+
+	c.JSON(http.StatusOK, gin.H{"message": "Reset link sent (check console)"})
+}
+
+// ResetPassword (Сброс по токену)
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var input struct {
+		Token       string `json:"token" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required,min=6"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var user models.User
+	// Ищем юзера по токену и проверяем срок действия
+	if err := h.DB.Where("reset_token = ? AND reset_token_expires > ?", input.Token, time.Now()).First(&user).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
+		return
+	}
+
+	// Обновляем пароль и очищаем токен
+	newHash, _ := utils.HashPassword(input.NewPassword)
+	user.PasswordHash = newHash
+	user.ResetToken = ""
+	h.DB.Save(&user)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
 }

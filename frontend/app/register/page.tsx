@@ -25,7 +25,7 @@ export default function RegisterPage() {
     setSuccess('');
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/register`, {
+      const response = await axios.post(`${API_BASE_URL}register`, {
         // Ключи в JSON должны строго соответствовать gin-тегам в RegisterInput!
         username,
         email,

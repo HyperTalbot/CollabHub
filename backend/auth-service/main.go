@@ -55,6 +55,9 @@ func main() {
 			// Регистрируем наш эндпоинт
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+
+			auth.POST("/forgot-password", authHandler.ForgotPassword)
+			auth.POST("/reset-password", authHandler.ResetPassword)
 		}
 
 		// --- 2. ПУБЛИЧНЫЕ/ВНУТРЕННИЕ роуты пользователей ---
@@ -62,15 +65,26 @@ func main() {
 		users := apiV1.Group("/users")
 		{
 			users.GET("/:id", userHandler.GetUserByID)
+			users.GET("/search", userHandler.SearchUsers)
 		}
 
-		// --- 3. ЗАЩИЩЕННЫЕ роуты (Требуют JWT) ---
+		// 3. ЗАЩИЩЕННЫЕ роуты (Для всех залогиненных)
 		protected := apiV1.Group("/")
 		protected.Use(middleware.AuthRequired())
 		{
-			// Теперь /users/me защищен, а /users/:id - нет.
 			protected.GET("/users/me", authHandler.GetMe)
-			// protected.PUT("/users/me", authHandler.UpdateProfile) // Будущий роут
+			protected.POST("/auth/change-password", authHandler.ChangePassword)
+		}
+
+		// 4. АДМИНСКИЕ роуты (Только для админов)
+		admin := apiV1.Group("/admin")
+		// Сначала проверяем токен, потом проверяем роль
+		admin.Use(middleware.AuthRequired(), middleware.AdminRequired())
+		{
+			admin.GET("/users", userHandler.GetAllUsers)
+			admin.PATCH("/users/:id/role", userHandler.UpdateUserRole)
+			admin.PUT("/users/:id", userHandler.AdminUpdateUser)
+			admin.DELETE("/users/:id", userHandler.DeleteUser)
 		}
 	}
 

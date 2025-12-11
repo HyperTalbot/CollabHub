@@ -19,6 +19,11 @@ interface WebSocketContextType {
   sendMessage: (conversationId: number, content: string) => void;
   lastJsonMessage: Message | null;
   isConnected: boolean;
+
+	// activeView: 'dm' | 'server';
+	// activeServerId: number | null;
+	// activeChannelId: number | null;
+	// activeChatId: number | null;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
@@ -68,32 +73,40 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
 
         // --- ГЛОБАЛЬНЫЕ УВЕДОМЛЕНИЯ ---
         // Показываем, только если у нас есть данные юзера и отправитель - не мы
-        if (currentUser && msg.sender_id !== currentUser.id) {
+        // ЛОГ ДЛЯ ОТЛАДКИ (Посмотрите в консоль браузера, когда придет сообщение)
+        console.log("WS Notification Check:", { 
+           me: currentUser?.id, 
+           sender: msg.sender_id, 
+           match: Number(msg.sender_id) !== Number(currentUser?.id) 
+        });
+
+        // ИСПРАВЛЕНИЕ: Принудительное приведение к Number()
+        if (currentUser && Number(msg.sender_id) !== Number(currentUser.id)) {
             
-            // setTimeout выносит вызов из цикла рендеринга, предотвращая ошибки React
             setTimeout(() => {
                 toast.custom((t) => (
+                    // ... (JSX тоста оставляем тем же, он был красивым) ...
                     <div 
                         className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-white dark:bg-gray-800 shadow-xl rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 cursor-pointer border-l-4 border-blue-500`}
                         onClick={() => {
                             toast.dismiss(t.id);
-                            // Используем window.location для надежного перехода, или router.push если доступен
-                            window.location.href = '/messenger'; 
+                            window.location.href = '/misable'; 
                         }}
                     >
                       <div className="flex-1 w-0 p-4">
                         <div className="flex items-start">
                           <div className="flex-shrink-0 pt-0.5">
+                             {/* Аватарка */}
                             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-sm">
                                {msg.sender_username?.[0]?.toUpperCase() || "?"}
                             </div>
                           </div>
-                          <div className="ml-3 flex-1">
+                          <div className="ml-3 flex-1 overflow-hidden">
                             <p className="text-sm font-bold text-gray-900 dark:text-white">
                               {msg.sender_username}
                             </p>
-                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-300 line-clamp-2">
-															{msg.content}
+                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-300 line-clamp-2 break-words">
+                              {msg.content}
                             </p>
                           </div>
                         </div>

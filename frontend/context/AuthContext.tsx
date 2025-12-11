@@ -10,6 +10,7 @@ interface User {
   id: number;
   username: string;
   email: string;
+  role: string;
   // Добавьте остальные поля, которые возвращает ваш Go-сервис
 }
 

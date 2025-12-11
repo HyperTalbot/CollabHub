@@ -3,35 +3,43 @@ import axios from 'axios';
 import Cookies from 'js-cookie';
 
 const axiosInstance = axios.create({
-  // Базовый URL можно оставить для постов, или убрать, 
-  // так как мы часто используем полные URL
   baseURL: 'http://localhost:8081/api/v1', 
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Интерцептор запроса: Добавляет токен ко ВСЕМ запросам
+// Request Interceptor
 axiosInstance.interceptors.request.use(
   (config) => {
-    // 1. Пытаемся найти токен в Cookies (приоритет)
+    // ИСПРАВЛЕНИЕ: Явно указываем тип
     let token: string | undefined | null = Cookies.get('authToken');
     
-    // 2. Если нет в Cookies, ищем в localStorage
     if (!token && typeof window !== 'undefined') {
       token = localStorage.getItem('authToken');
     }
 
-    // 3. Если токен найден, добавляем заголовок
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      console.warn("Axios Interceptor: Token not found in Cookies or LocalStorage");
     }
-
     return config;
   },
+  (error) => Promise.reject(error)
+);
+
+// Response Interceptor (для 401 ошибки)
+axiosInstance.interceptors.response.use(
+  (response) => response,
   (error) => {
+    if (error.response && error.response.status === 401) {
+      // Логика редиректа на логин, если токен протух
+      if (typeof window !== 'undefined') {
+          // Не удаляем куки сразу, чтобы не моргало, или удаляем и редиректим
+          // Cookies.remove('authToken');
+          // localStorage.removeItem('authToken');
+          // window.location.href = '/login'; 
+      }
+    }
     return Promise.reject(error);
   }
 );

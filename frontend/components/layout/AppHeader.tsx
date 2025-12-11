@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { 
   Home, MessageCircle, Music, Mail, LayoutGrid, Brain, Shield, X, Menu,
   Plus, Search, Bell, User, Settings, Heart, RotateCcw, UserCheck, Bot,
-  Pencil, Star, LogOut, Palette, LucideIcon // <-- Импортируем тип LucideIcon
+  Pencil, Star, LogOut, Palette, Languages, LucideIcon, // <-- Импортируем тип LucideIcon
 } from 'lucide-react';
 import CreateFanMenu, { CreationMode } from '../create/CreateFanMenu';
 import CreateContentModal from '../create/CreateContentModal';
@@ -92,6 +92,7 @@ export default function AppHeader({
   setPanel2Visible
 }: AppHeaderProps) {
   const { logout } = useAuth();
+  const { user: currentUser } = useAuth();
 
   const { toggleTheme, setTheme } = useTheme();
 
@@ -134,7 +135,7 @@ export default function AppHeader({
 					<div className="w-4/5 mx-auto bg-white shadow-lg rounded-full flex items-center py-2 transition-all dark:bg-gray-800 dark:border dark:border-gray-700"> 
 						<div className="flex-1 flex justify-center items-center space-x-0">
               <NavLink href="/doubleyou" iconSrc="/logo/doubleyou.svg" label="DoubleYou" />
-              <NavLink href="/flashcards" iconSrc="/logo/flashcards.jpg" label="FlashCards" />
+              <NavLink href="/flip" iconSrc="/logo/flashcards.jpg" label="Flip" />
               <NavLink href="/kvach" iconSrc="/logo/kvach.svg" label="Kvach" />
               <NavLink href="/homepage" iconSrc="/logo/home.svg" label="Home" />
               <NavLink href="/postogram" iconSrc="/logo/postogram.svg" label="Postogram" />
@@ -154,7 +155,7 @@ export default function AppHeader({
 				) : (
 					// Увеличиваем высоту заглушки для правильного выравнивания
           // Кнопка Открыть
-					<div className="w-4/5 mx-auto h-14 flex justify-end"> 
+					<div className="w-5/5 mx-auto h-14 flex justify-end"> 
 						<button
 							onClick={() => setPanel1Visible(true)}
 							className="px-4 py-2 bg-white shadow-lg rounded-full dark:bg-gray-800 dark:border dark:border-gray-700"
@@ -208,7 +209,10 @@ export default function AppHeader({
 
 							<IconLink iconSrc="/icons/search.svg" label="Поиск" />
               <IconLink iconSrc="/icons/bell.svg" label="Уведомления" />
-              <IconLink iconSrc="/icons/profile.svg" label="Профиль" />
+              {/* <IconLink iconSrc="/icons/profile.svg" label="Профиль" /> */}
+              <div className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center text-white text-xs">
+                    {currentUser?.username?.[0]?.toUpperCase()}
+              </div>
 
               <div className='relative'>
                 <button 
@@ -228,12 +232,22 @@ export default function AppHeader({
                 {/* Выпадающий список */}
                 {settingsOpen && (
                   <div className="absolute top-full right-0 mt-2 w-60 bg-white shadow-xl rounded-lg p-2 z-50 dark:bg-gray-700">
-                      <DropdownItem
-                        icon={Pencil}
-                        label="Режим редактора"
-                        onClick={() => alert('Режим редактора (TODO)')} 
-                        extraLabel="Max"
-                      />
+                    <DropdownItem
+                      icon={User}
+                      label="Профиль"
+                      onClick={() => alert('Профиль в разработке')} 
+                    />
+                    <DropdownItem
+                      icon={Bell}
+                      label="Уведомления"
+                      onClick={() => alert('Уведомления в разработке')} 
+                    />
+                    <DropdownItem
+                      icon={Pencil}
+                      label="Режим редактора"
+                      onClick={() => alert('Режим редактора (TODO)')} 
+                      extraLabel="Max"
+                    />
                     <DropdownItem
                       icon={Palette}
                       label="Темы"
@@ -241,6 +255,16 @@ export default function AppHeader({
                         setIsThemeModalOpen(true); // <-- 4. Открываем модалку
                         setSettingsOpen(false); // Закрываем дропдаун
                       }}
+                    />
+                    <DropdownItem
+                      icon={Languages}
+                      label="Языки"
+                      onClick={() => alert('Языки в разработке')} 
+                    />
+                    <DropdownItem
+                      icon={Bot}
+                      label="Кола"
+                      onClick={() => alert('Кола в разработке')} 
                     />
                     <div className="border-t my-1"></div> {/* Разделитель */}
                     <DropdownItem
@@ -264,7 +288,7 @@ export default function AppHeader({
 						</button>
 					</div>
 				) : (
-					<div className="w-4/5 mx-auto h-10 flex justify-end">
+					<div className="w-5/5 mx-auto h-10 flex justify-end">
 						<button
 							onClick={() => setPanel2Visible(true)}
 							className="p-4 py-2 bg-white shadow-lg rounded-full dark:bg-gray-800 dark:border dark:border-gray-700"

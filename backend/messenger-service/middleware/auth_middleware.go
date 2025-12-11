@@ -1,4 +1,4 @@
-package middlewares
+package middleware
 
 import (
 	"backend/messenger-service/utils"
@@ -41,5 +41,25 @@ func AuthRequired() gin.HandlerFunc {
 		c.Set("userID", claims.UserID)
 
 		c.Next() // Продолжить выполнение запроса к основному обработчику
+	}
+}
+
+// AdminRequired - Пропускает ТОЛЬКО админов (ставится ПОСЛЕ AuthRequired)
+func AdminRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("role")
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied: role not found"})
+			c.Abort()
+			return
+		}
+
+		if role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required"})
+			c.Abort()
+			return
+		}
+
+		c.Next()
 	}
 }

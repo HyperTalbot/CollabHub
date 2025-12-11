@@ -103,7 +103,7 @@ const CollabHubLanding = () => {
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full flex items-center justify-center">
             {/* <Rocket className="w-7 h-7" /> */}
-            <Image alt='CollabHub' src={'/logo/CollabHub1.jpg'} width={40} height={40}/>
+            <Image alt='CollabHub' src={'/logo/collabhub.png'} width={48} height={48}/>
           </div>
           <span className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
             CollabHub
@@ -155,7 +155,7 @@ const CollabHubLanding = () => {
           <div className="mb-8 flex justify-center">
             <div className="w-24 h-24 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full flex items-center justify-center "> 
               {/* <Rocket className="w-14 h-14" /> animate-bounce*/}
-              <Image alt='CollabHub' src={'/logo/CollabHub1.jpg'} width={80} height={80}/>
+              <Image alt='CollabHub' src={'/logo/collabhub.png'} width={96} height={96}/>
             </div>
           </div>
           
@@ -407,7 +407,7 @@ const CollabHubLanding = () => {
           
           <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="text-center">
-              <p className="text-4xl font-black text-purple-400 mb-2">7</p>
+              <p className="text-4xl font-black text-purple-400 mb-2">6</p>
               <p className="text-sm text-gray-400">Платформ</p>
             </div>
             <div className="text-center">

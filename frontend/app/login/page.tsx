@@ -78,7 +78,7 @@ export default function LoginPage() {
           <label className="block text-black text-sm font-bold mb-2">Email</label>
           <input
             type="email"
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-black leading-tight focus:outline-none focus:shadow-outline"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -89,7 +89,7 @@ export default function LoginPage() {
           <label className="block text-black text-sm font-bold mb-2">Пароль</label>
           <input
             type="password"
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline"
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-black mb-3 leading-tight focus:outline-none focus:shadow-outline"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required

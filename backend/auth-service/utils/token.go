@@ -14,6 +14,7 @@ import (
 type JWTClaims struct {
 	UserID   uint   `json:"user_id"`
 	Username string `json:"username"`
+	Role     string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -30,7 +31,7 @@ func getJWTSecret() ([]byte, error) {
 }
 
 // GenerateToken создает новый JWT для пользователя
-func GenerateToken(userID uint, username string) (string, error) {
+func GenerateToken(userID uint, username string, role string) (string, error) {
 	// Если секретный ключ не установлен (например, в .env), произойдет ошибка
 
 	jwtSecret, err := getJWTSecret()
@@ -47,6 +48,7 @@ func GenerateToken(userID uint, username string) (string, error) {
 	claims := &JWTClaims{
 		UserID:   userID,
 		Username: username,
+		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

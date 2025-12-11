@@ -1,14 +1,14 @@
+// /backend/messenger-service/main.go
 package main
 
 import (
 	"backend/messenger-service/db"
 	"backend/messenger-service/handlers"
-	middlewares "backend/messenger-service/middleware"
+	"backend/messenger-service/middleware"
 	"backend/messenger-service/utils"
 	"backend/messenger-service/ws"
-	"net/http"
-
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -24,10 +24,14 @@ func main() {
 
 	db.InitDB()
 
+	// 1. Инициализация и запуск Hub
 	hub := ws.NewHub()
 	go hub.Run()
 
+	// 2. Инициализация Хендлеров
 	conversationHandler := &handlers.ConversationHandler{DB: db.DB}
+	serverHandler := &handlers.ServerHandler{DB: db.DB}
+	channelHandler := &handlers.ChannelHandler{DB: db.DB}
 
 	r := gin.Default()
 
@@ -40,42 +44,46 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// WebSocket Endpoint (публичный, токен проверяем внутри)
+	// WebSocket Endpoint
 	r.GET("/ws", func(c *gin.Context) {
-		// Получаем токен из URL Query: /ws?token=...
 		token := c.Query("token")
 		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token required"})
 			return
 		}
-
-		// Валидируем токен вручную
 		claims, err := utils.ParseToken(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			return
 		}
-
-		// Апгрейд соединения через ws.ServeWs
 		ws.ServeWs(hub, db.DB, c.Writer, c.Request, claims.UserID)
 	})
 
+	// === REST API ===
 	api := r.Group("/api/v1")
 	{
-		// Группа защищенных роутов
 		protected := api.Group("/")
-
-		protected.Use(middlewares.AuthRequired()) // Требует токен
+		protected.Use(middleware.AuthRequired())
 		{
-			// Начать чат (или получить существующий)
+			// --- ЧАТЫ (Conversations) ---
+			// Проверьте, что эти строки существуют!
 			protected.POST("/conversations", conversationHandler.StartChat)
-
-			// Получить список моих чатов
 			protected.GET("/conversations", conversationHandler.GetMyConversations)
-
 			protected.GET("/conversations/:id/messages", conversationHandler.GetMessages)
-
 			protected.POST("/conversations/:id/read", conversationHandler.MarkConversationAsRead)
+			protected.POST("/groups", conversationHandler.CreateGroup)
+
+			// --- СЕРВЕРА (Servers) ---
+			protected.POST("/servers", serverHandler.CreateServer)
+			protected.GET("/servers", serverHandler.GetMyServers)
+			protected.POST("/servers/join", serverHandler.JoinServer)
+			protected.POST("/servers/:id/leave", serverHandler.LeaveServer)
+
+			// КАНАЛЫ
+			protected.POST("/channels", channelHandler.CreateChannel)
+			protected.GET("/servers/:server_id/channels", channelHandler.GetChannelsByServerID)
+			protected.DELETE("/channels/:id", channelHandler.DeleteChannel)
+
 		}
 	}
 

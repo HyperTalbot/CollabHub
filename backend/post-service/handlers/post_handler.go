@@ -182,6 +182,30 @@ func (h *PostHandler) GetPostByID(c *gin.Context) {
 		return
 	}
 
+	// Читаем параметры пагинации
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if limit > 50 {
+		limit = 50
+	}
+	offset := (page - 1) * limit
+
+	var comments []models.Comment
+	var total int64
+
+	// Считаем всего
+	h.DB.Model(&models.Comment{}).Where("post_id = ?", postID).Count(&total)
+
+	// Загружаем с лимитом
+	if err := h.DB.Where("post_id = ?", postID).
+		Order("created_at asc").
+		Limit(limit).
+		Offset(offset).
+		Find(&comments).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
+		return
+	}
+
 	// 2. Обогащаем пост (Вы забыли это сделать)
 	post.UserUsername = utils.GetUsernameByID(post.UserID)
 
@@ -203,7 +227,11 @@ func (h *PostHandler) GetPostByID(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, post)
+	c.JSON(http.StatusOK, gin.H{
+		"data":  comments,
+		"total": total,
+		"page":  page,
+	})
 }
 
 func (h *PostHandler) LikePost(c *gin.Context) {
@@ -273,4 +301,88 @@ func (h *PostHandler) UnlikePost(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Post unliked successfully"})
+}
+
+// === ADMIN HANDLERS ===
+
+// AdminGetAllPosts - Полный список постов
+func (h *PostHandler) AdminGetAllPosts(c *gin.Context) {
+	var posts []models.Post
+	query := h.DB.Model(&models.Post{})
+
+	// Поиск
+	if search := c.Query("q"); search != "" {
+		query = query.Where("content ILIKE ? OR title ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	// Сортировка
+	sortBy := c.DefaultQuery("sort_by", "created_at")
+	order := c.DefaultQuery("order", "desc")
+
+	allowedSorts := map[string]bool{"id": true, "user_id": true, "created_at": true, "likes_count": true}
+	if !allowedSorts[sortBy] {
+		sortBy = "created_at"
+	}
+	if order != "asc" && order != "desc" {
+		order = "desc"
+	}
+
+	query = query.Order(sortBy + " " + order)
+
+	// Пагинация
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if limit > 50 {
+		limit = 50
+	}
+	offset := (page - 1) * limit
+
+	var total int64
+	query.Count(&total)
+
+	if err := query.Offset(offset).Limit(limit).Find(&posts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch posts"})
+		return
+	}
+
+	// Обогащаем именами пользователей (опционально, если нужно в админке)
+	for i := range posts {
+		posts[i].UserUsername = utils.GetUsernameByID(posts[i].UserID)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  posts,
+		"total": total,
+		"page":  page,
+	})
+}
+
+// AdminDeletePost - Удаление поста
+func (h *PostHandler) AdminDeletePost(c *gin.Context) {
+	id := c.Param("id")
+	if err := h.DB.Delete(&models.Post{}, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete post"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+// --- ЗАГЛУШКИ ДЛЯ НЕРЕАЛИЗОВАННОГО ФУНКЦИОНАЛА ---
+// (Чтобы админка могла отправлять запросы и получать пустые списки)
+
+func (h *PostHandler) AdminGetVideos(c *gin.Context) {
+	// Пока возвращаем пустой список
+	c.JSON(http.StatusOK, gin.H{"data": []interface{}{}, "total": 0})
+}
+
+func (h *PostHandler) AdminGetShorts(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"data": []interface{}{}, "total": 0})
+}
+
+func (h *PostHandler) AdminGetMusic(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"data": []interface{}{}, "total": 0})
+}
+
+func (h *PostHandler) AdminGetStreams(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"data": []interface{}{}, "total": 0})
 }

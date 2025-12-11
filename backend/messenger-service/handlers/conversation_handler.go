@@ -32,7 +32,36 @@ type MessagesResponse struct {
 	LastReadMessageID uint             `json:"last_read_message_id"`
 }
 
-// StartChat - создает новый чат или возвращает существующий
+type CreateGroupInput struct {
+	Name           string `json:"name" binding:"required"`
+	AvatarURL      string `json:"avatar_url"`
+	ParticipantIDs []uint `json:"participant_ids" binding:"required"` // Список ID участников
+}
+
+// Вспомогательная функция: Проверяет, есть ли юзер в локальной БД, если нет - создает
+func (h *ConversationHandler) ensureUserExists(userID uint) {
+	var user models.User
+
+	// Пытаемся найти пользователя по ID
+	if err := h.DB.First(&user, userID).Error; err != nil {
+		// Если ошибка (скорее всего RecordNotFound), значит юзера нет
+		// 1. Получаем его актуальное имя из auth-service
+		username := utils.GetUsernameByID(userID)
+
+		// 2. Создаем заглушку пользователя в БД мессенджера
+		// Важно: Мы принудительно ставим ID
+		newUser := models.User{
+			ID:       userID,
+			Username: username,
+		}
+		// Используем Clauses для игнорирования конфликтов (на случай гонки запросов)
+		// Если GORM v2 (обычно так):
+		h.DB.Create(&newUser)
+		// Или если есть риск дублей, можно использовать FirstOrCreate, но Create обычно достаточно здесь
+	}
+}
+
+// StartChat - Создает новый чат или возвращает существующий
 func (h *ConversationHandler) StartChat(c *gin.Context) {
 	var input StartChatInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -40,23 +69,18 @@ func (h *ConversationHandler) StartChat(c *gin.Context) {
 		return
 	}
 
-	// Безопасное извлечение
+	// Безопасное получение UserID из контекста
 	userID_interface, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-
-	// Безопасное приведение типов
-	myUserID, ok := userID_interface.(uint)
-	if !ok {
-		// На случай, если в контексте лежит float64 (иногда бывает при парсинге JSON)
-		if val, ok := userID_interface.(float64); ok {
-			myUserID = uint(val)
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "User ID format error"})
-			return
-		}
+	// Приведение типов (как мы делали раньше для безопасности)
+	var myUserID uint
+	if val, ok := userID_interface.(uint); ok {
+		myUserID = val
+	} else if val, ok := userID_interface.(float64); ok {
+		myUserID = uint(val)
 	}
 
 	if myUserID == input.TargetUserID {
@@ -64,33 +88,31 @@ func (h *ConversationHandler) StartChat(c *gin.Context) {
 		return
 	}
 
-	// Проверяем, существует ли уже чат между этими двумя (сложный SQL запрос)
-	// Ищем чат, где есть оба участника
-	var conversation models.Conversation
+	// === ИСПРАВЛЕНИЕ: СИНХРОНИЗАЦИЯ ПОЛЬЗОВАТЕЛЕЙ ===
+	// Перед тем как ссылаться на пользователей, убеждаемся, что они есть в таблице users
+	h.ensureUserExists(myUserID)
+	h.ensureUserExists(input.TargetUserID)
+	// ===============================================
 
-	// Этот запрос ищет conversation_id, который имеет записи в conversation_participants
-	// и для myUserID, и для targerUserID
-	query := `SELECT c.* FROM conversations c
+	// 1. Проверяем, существует ли уже чат
+	var conversation models.Conversation
+	query := `
+		SELECT c.* FROM conversations c
 		JOIN conversation_participants cp1 ON c.id = cp1.conversation_id
 		JOIN conversation_participants cp2 ON c.id = cp2.conversation_id
 		WHERE cp1.user_id = ? AND cp2.user_id = ?
-		LIMIT 1
-  	`
+		LIMIT 1`
 
 	result := h.DB.Raw(query, myUserID, input.TargetUserID).Scan(&conversation)
 
 	if result.RowsAffected > 0 {
-		// Чат уже есть, возвращаем его ID
 		c.JSON(http.StatusOK, conversation)
 		return
 	}
 
-	// Если чата нет, создаем новый
-	// Примечание: Мы создаем "заглушки" User только с ID, чтобы заполнить связующую таблицу.
-	// В реальном проекте GORM сам разберется с foreign keys.
-	newConversation := models.Conversation{} // Пока пустая
+	// 2. Если чата нет, создаем новый
+	newConversation := models.Conversation{}
 
-	// Начинаем транзакцию
 	tx := h.DB.Begin()
 
 	if err := tx.Create(&newConversation).Error; err != nil {
@@ -99,25 +121,22 @@ func (h *ConversationHandler) StartChat(c *gin.Context) {
 		return
 	}
 
-	// Вручную добавляем участников в связующую таблицу
-	// GORM по умолчанию называет её conversation_participants
-	// Структура: conversation_id, user_id
-
-	participant1 := map[string]interface{}{
-		"conversation_id": newConversation.ID,
-		"user_id":         myUserID,
+	// Вручную добавляем участников
+	participant1 := models.ConversationParticipant{
+		ConversationID: newConversation.ID,
+		UserID:         myUserID,
 	}
-	participant2 := map[string]interface{}{
-		"conversation_id": newConversation.ID,
-		"user_id":         input.TargetUserID,
+	participant2 := models.ConversationParticipant{
+		ConversationID: newConversation.ID,
+		UserID:         input.TargetUserID,
 	}
 
-	if err := tx.Table("conversation_participants").Create(&participant1).Error; err != nil {
+	if err := tx.Create(&participant1).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add participant 1"})
 		return
 	}
-	if err := tx.Table("conversation_participants").Create(&participant2).Error; err != nil {
+	if err := tx.Create(&participant2).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add participant 2"})
 		return
@@ -207,15 +226,24 @@ func (h *ConversationHandler) GetMessages(c *gin.Context) {
 	userID_interface, _ := c.Get("userID")
 	myUserID := userID_interface.(uint)
 
+	// Читаем параметр before_id (для пагинации)
+	beforeIDStr := c.Query("before_id")
+
 	// Проверка доступа (входит ли пользователь в этот чат) - Опустим для краткости
 	// но в продакшене  обязательно нужно проверять conversation_participants!
 
 	var messages []models.Message
 	// Загружаем сообщения, сортируем от старых к новым
-	if err := h.DB.Where("conversation_id = ?", conversationID).
+	query := h.DB.Where("conversation_id = ?", conversationID).
 		Order("created_at desc"). // Сначала новые
-		Limit(50).                // Только 50 штук
-		Find(&messages).Error; err != nil {
+		Limit(50)                 // Только 50 штук
+
+	// Если передан before_id, добавляем условие "ID меньше чем..."
+	if beforeIDStr != "" {
+		query = query.Where("id < ?", beforeIDStr)
+	}
+
+	if err := query.Find(&messages).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch messages"})
 		return
 	}
@@ -240,17 +268,33 @@ func (h *ConversationHandler) MarkConversationAsRead(c *gin.Context) {
 	userID_interface, _ := c.Get("userID")
 	myUserID := userID_interface.(uint)
 
-	// Находим последнее сообщение в этом чате (чтобы обновить курсор до максимума)
-	var lastMessage models.Message
-	if err := h.DB.Where("conversation_id = ?", conversationID).Order("id desc").First(&lastMessage).Error; err != nil {
-		// Если сообщений нет, нечего читать
-		c.JSON(http.StatusOK, gin.H{"status": "nothing to read"})
+	// ИСПОЛЬЗУЕМ СЛАЙС ВМЕСТО ОДИНОЧНОЙ СТРУКТУРЫ
+	var messages []models.Message
+
+	// Используем Find вместо First.
+	// Find НЕ возвращает ошибку, если записей нет, он просто вернет пустой список.
+	err := h.DB.Where("conversation_id = ?", conversationID).
+		Order("id desc").
+		Limit(1).
+		Find(&messages).Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch last message"})
 		return
 	}
 
+	// ПРОВЕРКА: Если список пуст, значит сообщений в чате нет
+	if len(messages) == 0 {
+		// Это нормальная ситуация для нового чата.
+		// Просто говорим "ОК", так как обновлять нечего.
+		c.JSON(http.StatusOK, gin.H{"status": "chat is empty"})
+		return
+	}
+
+	lastMessage := messages[0]
+
 	// Обновляем запись в conversation_participants
-	// Устанавливаем LastReadMessageID = ID последнего сообщения
-	err := h.DB.Model(&models.ConversationParticipant{}).
+	err = h.DB.Model(&models.ConversationParticipant{}).
 		Where("conversation_id = ? AND user_id = ?", conversationID, myUserID).
 		Update("last_read_message_id", lastMessage.ID).Error
 
@@ -260,4 +304,63 @@ func (h *ConversationHandler) MarkConversationAsRead(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "read", "last_read_id": lastMessage.ID})
+}
+
+// CreateGroup - Создает групповой чат
+func (h *ConversationHandler) CreateGroup(c *gin.Context) {
+	var input CreateGroupInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID_interface, _ := c.Get("userID")
+	myUserID := userID_interface.(uint)
+
+	h.ensureUserExists(myUserID)
+
+	tx := h.DB.Begin()
+
+	// 1. Создаем Conversation
+	newGroup := models.Conversation{
+		Type:      models.ConversationTypeGroup,
+		Name:      input.Name,
+		AvatarURL: input.AvatarURL,
+		OwnerID:   myUserID,
+	}
+
+	if err := tx.Create(&newGroup).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create group"})
+		return
+	}
+
+	// 2. Добавляем участников (Владельца + список из input)
+	participants := []models.ConversationParticipant{
+		{ConversationID: newGroup.ID, UserID: myUserID},
+	}
+
+	// Убеждаемся, что все участники существуют, и добавляем их
+	uniqueIDs := make(map[uint]bool)
+	uniqueIDs[myUserID] = true // Себя уже добавили
+
+	for _, pID := range input.ParticipantIDs {
+		if pID != myUserID && !uniqueIDs[pID] { // Не добавляем себя дважды и дубликаты
+			h.ensureUserExists(pID)
+			participants = append(participants, models.ConversationParticipant{
+				ConversationID: newGroup.ID,
+				UserID:         pID,
+			})
+			uniqueIDs[pID] = true
+		}
+	}
+
+	if err := tx.Create(&participants).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add participants"})
+		return
+	}
+
+	tx.Commit()
+	c.JSON(http.StatusCreated, newGroup)
 }

@@ -17,7 +17,7 @@ export default function RootLayout({
         <link
           rel='preload'
           as='image'
-          href='https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=1920&h=1080&fit=crop'
+          href='cosmo.jpg'
         />
       </head>
       <body>

@@ -24,6 +24,9 @@ func main() {
 
 	r := gin.Default()
 
+	// ВАЖНО: Раздача статики (чтобы картинки открывались в браузере)
+	r.Static("/uploads", "./uploads")
+
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -73,7 +76,22 @@ func main() {
 			comments.GET("/:id/thread", middlewares.AuthOptional(), commentHandler.GetCommentThread)
 		}
 
+		admin := apiV1.Group("/admin")
+		// ВАЖНО: Используем ДВА middleware
+		admin.Use(middlewares.AuthRequired(), middlewares.AdminRequired())
+		{
+			admin.GET("/posts", postHandler.AdminGetAllPosts)
+			admin.DELETE("/posts/:id", postHandler.AdminDeletePost)
+
+			// Заглушки для будущего функционала
+			admin.GET("/videos", postHandler.AdminGetVideos)
+			admin.GET("/shorts", postHandler.AdminGetShorts)
+			admin.GET("/music", postHandler.AdminGetMusic)
+			admin.GET("/streams", postHandler.AdminGetStreams)
+		}
 	}
+
+	apiV1.POST("/upload", middlewares.AuthRequired(), handlers.UploadImage)
 
 	log.Println("Starting Posts service on :8081")
 	if err := r.Run(":8081"); err != nil {

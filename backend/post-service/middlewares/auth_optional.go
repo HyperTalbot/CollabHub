@@ -37,6 +37,8 @@ func AuthOptional() gin.HandlerFunc {
 
 		// Успех, токен валиден, устанавливаем ID
 		c.Set("userID", claims.UserID)
+		c.Set("role", claims.Role)
+
 		c.Next()
 	}
 }

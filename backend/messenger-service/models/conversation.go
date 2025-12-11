@@ -6,9 +6,23 @@ import (
 	"gorm.io/gorm"
 )
 
-type Conversation struct {
-	ID uint `gorm:"primaryKey" json:"id"`
+type ConversationType string
 
+const (
+	ConversationTypeDM    ConversationType = "dm"    // Личный чат
+	ConversationTypeGroup ConversationType = "group" // Группа
+)
+
+type Conversation struct {
+	ID   uint             `gorm:"primaryKey" json:"id"`
+	Type ConversationType `gorm:"default:'dm'"` // <-- Тип чата
+
+	// Поля для Группы:
+	Name      string // Имя группы (пусто для DM)
+	AvatarURL string // Аватарка группы
+	OwnerID   uint   // Создатель группы (важно для прав)
+
+	// Связи
 	// Участники этого чата (связь многие ко многим)
 	Participants []User `gorm:"many2many:conversation_participants;" json:"participants"`
 

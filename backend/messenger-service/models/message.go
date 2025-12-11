@@ -8,7 +8,8 @@ import (
 
 type Message struct {
 	ID             uint   `gorm:"primaryKey" json:"id"`
-	ConversationID uint   `gorm:"not null;index" json:"conversation_id"`
+	ConversationID *uint  `gorm:"not null;index" json:"conversation_id"`
+	ChannelID      *uint  `gorm:"channel_id,omitempty"`
 	SenderID       uint   `gorm:"not null;index" json:"sender_id"`
 	Content        string `gorm:"type:text;not null" json:"content"`
 

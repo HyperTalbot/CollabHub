@@ -28,39 +28,65 @@ const (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	// Разрешаем CORS для веб-сокетов (важно для localhost:3000)
+	// Разрешаем CORS
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+// Client - посредник между websocket соединением и Hub
 type Client struct {
 	Hub    *Hub
 	Conn   *websocket.Conn
 	Send   chan []byte
 	UserID uint
-	DB     *gorm.DB // Ссылка на БД для сохранения сообщений
+	DB     *gorm.DB
 }
 
-// Входящее сообщение от фронтенда
+// ServeWs - обрабатывает HTTP-запрос и переключает его на WebSocket
+// Эту функцию мы вызываем из main.go
+func ServeWs(hub *Hub, db *gorm.DB, w http.ResponseWriter, r *http.Request, userID uint) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	client := &Client{
+		Hub:    hub,
+		Conn:   conn,
+		Send:   make(chan []byte, 256),
+		UserID: userID,
+		DB:     db,
+	}
+
+	client.Hub.Register <- client
+
+	// Запускаем горутины для чтения и записи
+	go client.WritePump()
+	go client.ReadPump()
+}
+
+// IncomingMessage - то, что присылает фронтенд
 type IncomingMessage struct {
-	ConversationID uint   `json:"conversation_id"`
+	ConversationID *uint  `json:"conversation_id"`
+	ChannelID      *uint  `json:"channel_id"`
 	Content        string `json:"content"`
 }
 
-// Исходящее сообщение (то, что увидит фронтенд)
+// OutgoingMessage - то, что мы отправляем обратно клиентам
 type OutgoingMessage struct {
 	ID             uint      `json:"id"`
-	ConversationID uint      `json:"conversation_id"`
+	ConversationID *uint     `json:"conversation_id,omitempty"`
+	ChannelID      *uint     `json:"channel_id,omitempty"`
 	SenderID       uint      `json:"sender_id"`
 	SenderUsername string    `json:"sender_username"`
 	Content        string    `json:"content"`
 	CreatedAt      time.Time `json:"created_at"`
-	// Можно добавить Username отправителя
 }
 
-// ReadPump читает сообщения от WebSocket (от браузера)
+// ReadPump - читает сообщения от браузера, сохраняет в БД и рассылает
 func (c *Client) ReadPump() {
 	defer func() {
-		c.Hub.Unregister <- c
+		c.Hub.Unregister <- c // Исправлено: Unregister с большой буквы
 		c.Conn.Close()
 	}()
 
@@ -72,71 +98,125 @@ func (c *Client) ReadPump() {
 		_, messageBytes, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Printf("WS Error: %v", err)
 			}
 			break
 		}
 
-		// 1. Парсим JSON от фронтенда
+		// 1. Парсинг
 		var msgReq IncomingMessage
 		if err := json.Unmarshal(messageBytes, &msgReq); err != nil {
-			log.Printf("Invalid JSON format: %v", err)
+			log.Printf("Invalid JSON: %v", err)
 			continue
 		}
 
-		// 2. Сохраняем в БД
-		newMessage := models.Message{
-			ConversationID: msgReq.ConversationID,
-			SenderID:       c.UserID,
-			Content:        msgReq.Content,
-		}
-
-		if err := c.DB.Create(&newMessage).Error; err != nil {
-			log.Printf("Failed to save message: %v", err)
+		// Валидация
+		if (msgReq.ConversationID == nil && msgReq.ChannelID == nil) || (msgReq.ConversationID != nil && msgReq.ChannelID != nil) {
 			continue
 		}
 
-		// Автоматически обновляем курсор прочтения для ОТПРАВИТЕЛЯ
-		// "Я прочитал сообщение, которое только что отправил"
-		c.DB.Model(&models.ConversationParticipant{}).
-			Where("conversation_id = ? AND user_id = ?", newMessage.ConversationID, c.UserID).
-			Update("last_read_message_id", newMessage.ID)
+		// --- ЛОГИКА ДЛЯ ЛИЧНЫХ ЧАТОВ ---
+		if msgReq.ConversationID != nil {
+			// Сохраняем в БД
+			newMessage := models.Message{
+				ConversationID: msgReq.ConversationID,
+				SenderID:       c.UserID,
+				Content:        msgReq.Content,
+			}
+			if err := c.DB.Create(&newMessage).Error; err != nil {
+				log.Printf("DB Error: %v", err)
+				continue
+			}
 
-		// Получаем имя пользователя (можно оптимизировать, храня в Client, но пока так)
-		username := utils.GetUsernameByID(c.UserID)
+			// Обновляем "Прочитано" для себя
+			c.DB.Model(&models.ConversationParticipant{}).
+				Where("conversation_id = ? AND user_id = ?", *msgReq.ConversationID, c.UserID).
+				Update("last_read_message_id", newMessage.ID)
 
-		// 3. Подготавливаем ответ (JSON) для рассылки
-		outMsg := OutgoingMessage{
-			ID:             newMessage.ID,
-			ConversationID: newMessage.ConversationID,
-			SenderID:       newMessage.SenderID,
-			SenderUsername: username,
-			Content:        newMessage.Content,
-			CreatedAt:      newMessage.CreatedAt,
-		}
+			// Подготавливаем ответ
+			username := utils.GetUsernameByID(c.UserID)
+			outMsg := OutgoingMessage{
+				ID:             newMessage.ID,
+				ConversationID: newMessage.ConversationID,
+				SenderID:       newMessage.SenderID,
+				SenderUsername: username,
+				Content:        newMessage.Content,
+				CreatedAt:      newMessage.CreatedAt,
+			}
+			responseBytes, _ := json.Marshal(outMsg)
 
-		responseBytes, _ := json.Marshal(outMsg)
+			// РАССЫЛКА: Ищем участников и отправляем каждому лично через Hub.SendToUser
 
-		// 4. Находим участников чата и рассылаем им
-		var conversation models.Conversation
-		// Загружаем участников чата
-		if err := c.DB.Preload("Participants").First(&conversation, msgReq.ConversationID).Error; err == nil {
-			for _, p := range conversation.Participants {
-				// Отправляем всем участникам (включая отправителя, чтобы он увидел свое сообщение)
+			var participants []models.User
+			// Используем сложный JOIN или Preload, чтобы найти ID участников
+			c.DB.Joins("JOIN conversation_participants cp ON cp.user_id = users.id").
+				Where("cp.conversation_id = ?", *msgReq.ConversationID).
+				Find(&participants)
+
+			for _, p := range participants {
 				c.Hub.SendToUser(p.ID, responseBytes)
+			}
+		}
+
+		// --- ЛОГИКА ДЛЯ КАНАЛОВ СЕРВЕРА ---
+		if msgReq.ChannelID != nil {
+			// Находим канал, чтобы узнать сервер
+			var channel models.Channel
+			if err := c.DB.First(&channel, *msgReq.ChannelID).Error; err != nil {
+				continue
+			}
+
+			// Проверка прав (участник ли сервера?)
+			var count int64
+			c.DB.Table("server_members").
+				Where("server_id = ? AND user_id = ?", channel.ServerID, c.UserID).
+				Count(&count)
+			if count == 0 {
+				continue
+			}
+
+			// Сохраняем
+			newMessage := models.Message{
+				ChannelID: msgReq.ChannelID,
+				SenderID:  c.UserID,
+				Content:   msgReq.Content,
+			}
+			if err := c.DB.Create(&newMessage).Error; err != nil {
+				continue
+			}
+
+			// Подготавливаем ответ
+			username := utils.GetUsernameByID(c.UserID)
+			outMsg := OutgoingMessage{
+				ID:             newMessage.ID,
+				ChannelID:      newMessage.ChannelID,
+				SenderID:       newMessage.SenderID,
+				SenderUsername: username,
+				Content:        newMessage.Content,
+				CreatedAt:      newMessage.CreatedAt,
+			}
+			responseBytes, _ := json.Marshal(outMsg)
+
+			// РАССЫЛКА: Ищем всех членов сервера
+			var memberIDs []uint
+			c.DB.Table("server_members").
+				Where("server_id = ?", channel.ServerID).
+				Pluck("user_id", &memberIDs)
+
+			for _, memberID := range memberIDs {
+				c.Hub.SendToUser(memberID, responseBytes)
 			}
 		}
 	}
 }
 
-// WritePump отправляет сообщения в WebSocket (в браузер)
+// WritePump отправляет сообщения из канала Send в WebSocket
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
 		c.Conn.Close()
 	}()
-
 	for {
 		select {
 		case message, ok := <-c.Send:
@@ -162,27 +242,4 @@ func (c *Client) WritePump() {
 			}
 		}
 	}
-}
-
-// ServeWs обрабатывает HTTP-запрос и превращает его в WebSocket
-func ServeWs(hub *Hub, db *gorm.DB, w http.ResponseWriter, r *http.Request, userID uint) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	client := &Client{
-		Hub:    hub,
-		Conn:   conn,
-		Send:   make(chan []byte, 256),
-		UserID: userID,
-		DB:     db,
-	}
-
-	client.Hub.Register <- client
-
-	// Запускаем горутины для чтения и записи
-	go client.WritePump()
-	go client.ReadPump()
 }
