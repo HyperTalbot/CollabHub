@@ -89,6 +89,14 @@ func (h *ChannelHandler) GetChannelMessages(c *gin.Context) {
 		return
 	}
 
+	if err := h.DB.Preload("Sender").
+		Where("channel_id = ?", channelID).
+		Order("created_at asc").
+		Find(&messages).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Failed to load messages"})
+		return
+	}
+
 	// Reverse
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]

@@ -30,6 +30,15 @@ type CreatePostInput struct {
 
 // Создает новый пост в БД
 func (h *PostHandler) CreatePost(c *gin.Context) {
+	// ... получение claims из токена ...
+	// Представим, что вы достали userID, username и avatarUrl из Middleware
+	// Или, если в токене нет аватарки, вам придется сделать запрос в Auth Service,
+	// но для MVP лучше добавить avatar_url в Claims токена (в auth-service).
+
+	// ВНИМАНИЕ: Убедитесь, что ваш AuthMiddleware кладет username и avatar_url в контекст
+	username := c.GetString("username")
+	avatarUrl := c.GetString("avatar_url") // Если этого нет, передавайте с фронта или добавьте в JWT
+
 	var input CreatePostInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -52,10 +61,12 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 	}
 
 	post := models.Post{
-		UserID:   userID,
-		Title:    input.Title,
-		Content:  input.Content,
-		ImageURL: input.ImageURL,
+		UserID:          userID,
+		Title:           input.Title,
+		Content:         input.Content,
+		ImageURL:        input.ImageURL,
+		UserUsername:    username,
+		AuthorAvatarUrl: avatarUrl,
 	}
 
 	if err := h.DB.Create(&post).Error; err != nil {
@@ -63,6 +74,7 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		return
 	}
 
+	h.DB.Create(post)
 	c.JSON(http.StatusCreated, post)
 }
 

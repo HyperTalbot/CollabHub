@@ -22,6 +22,7 @@ interface Post {
   user_username: string;
   title: string;
   content: string;
+  author_avatar_url: string;
   created_at: string;
   
   // Добавленные поля для лайков
@@ -124,7 +125,6 @@ export default function Postogram() {
         
         {/* <CreatePostForm onPostCreated={handlePostCreated} /> */}
 
-        <h2 className="text-2xl text-black font-semibold mb-4 mt-6">Лента Postogram</h2>
         {loading ? (
           <p>Загрузка постов...</p>
         ) : (
@@ -137,12 +137,20 @@ export default function Postogram() {
                   {/* Заголовок поста */}
                   <div className="w-fit flex items-center space-x-3 mb-3 border border-gray-200 rounded-lg p-2 shadow-sm">
                     {/* Аватар (Заглушка) */}
-                    <div className="flex-shrink-0 w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center font-bold text-white text-lg">
-                      {post.user_id}
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200">
+                          {post.author_avatar_url ? ( // Убедитесь, что бэк возвращает это поле!
+                              <img src={post.author_avatar_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-blue-500 text-white font-bold">
+                                  {post.user_username?.[0]?.toUpperCase()}
+                              </div>
+                          )}
+                      </div>
                     </div>
                     {/* Инфо о пользователе */}
                     <div className="flex-1">
-                      <p className="font-bold text-black">{post.user_username || `User ${post.user_id}`} • 🟦🔶🟢</p>
+                      <p className="font-bold text-black">{post.user_username ? post.user_username : `User ${post.user_id}`} • 🟦🔶🟢</p>
                       <p className="text-xs text-gray-500">
                         {new Date(post.created_at).toLocaleDateString('ru-RU')}
                       </p>
@@ -174,7 +182,7 @@ export default function Postogram() {
                       {/* КНОПКА КОММЕНТАРИЕВ */}
                       <button 
                         onClick={() => navigateToPost(post.id)}
-                        className="flex items-center space-x-1 text-sm text-gray-500 hover:text-green-500 transition-colors"
+                        className="flex items-center space-x-1 text-sm text-gray-900 hover:text-green-500 transition-colors"
                         title="Комментарии"
                       >
                         <MessageCircle size={16} />

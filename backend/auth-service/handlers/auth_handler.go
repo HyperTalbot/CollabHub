@@ -230,3 +230,49 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
 }
+
+// UpdateProfile - Обновление профиля (Аватар, Био)
+func (h *AuthHandler) UpdateProfile(c *gin.Context) {
+	userID, _ := c.Get("userID")
+
+	var input struct {
+		AvatarURL string `json:"avatar_url"`
+		CoverURL  string `json:"cover_url"` // обложка
+		Bio       string `json:"bio"`
+		Location  string `json:"location"`
+		Website   string `json:"website"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var user models.User
+	if err := h.DB.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Обновляем только то, что прислали
+	if input.AvatarURL != "" {
+		user.AvatarURL = input.AvatarURL
+	}
+	if input.CoverURL != "" {
+		user.CoverURL = input.CoverURL
+	}
+	if input.Bio != "" {
+		user.Bio = input.Bio
+	}
+	if input.Location != "" {
+		user.Location = input.Location
+	}
+	if input.Website != "" {
+		user.Website = input.Website
+	}
+
+	h.DB.Save(&user)
+
+	// Не возвращаем хэш пароля
+	user.PasswordHash = ""
+	c.JSON(http.StatusOK, user)
+}

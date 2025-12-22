@@ -21,6 +21,23 @@ type CreateServerInput struct {
 	Tags        string `json:"tags"` // "tag1,tag2"
 }
 
+// Вспомогательная функция для получения ID (ИСПРАВЛЕНО)
+func getUserID(c *gin.Context) uint {
+	// ВАЖНО: middleware должен устанавливать "user_id" (с маленькой буквы)
+	id, exists := c.Get("user_id")
+	if !exists {
+		// Если не установлено, возвращаем 0 (или можно паниковать)
+		return 0
+	}
+
+	// Безопасное приведение типа
+	userID, ok := id.(uint)
+	if !ok {
+		return 0
+	}
+	return userID
+}
+
 // CreateServer - Создает сервер и дефолтный канал
 func (h *ServerHandler) CreateServer(c *gin.Context) {
 	var input CreateServerInput
@@ -29,15 +46,15 @@ func (h *ServerHandler) CreateServer(c *gin.Context) {
 		return
 	}
 
-	userID_interface, _ := c.Get("userID")
-	myUserID := userID_interface.(uint)
-
-	// ensureUserExists не нужен, т.к. для создания сервера пользователь должен быть онлайн
-	// и его данные уже должны быть в БД из-за WS соединения, но для надежности можно оставить.
+	myUserID := getUserID(c)
+	if myUserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
 	tx := h.DB.Begin()
 
-	// 1. Создаем Сервер
+	// 1. Сервер
 	newServer := models.Server{
 		Name:        input.Name,
 		AvatarURL:   input.AvatarURL,
@@ -48,34 +65,38 @@ func (h *ServerHandler) CreateServer(c *gin.Context) {
 
 	if err := tx.Create(&newServer).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create server"})
+		c.JSON(500, gin.H{"error": "Failed to create server"})
 		return
 	}
 
-	// 2. Добавляем владельца в участники (server_members)
-	// Явно добавляем владельца в server_members
-	// GORM по умолчанию именует таблицу для Many2Many как "server_members"
-	// Структура: server_id, user_id
+	// 2. Дефолтные каналы
+	defaultChannels := []models.Channel{
+		{
+			ServerID: newServer.ID,
+			Name:     "general",
+			Type:     models.ChannelTypeText,
+		},
+		{
+			ServerID: newServer.ID,
+			Name:     "voice",
+			Type:     models.ChannelTypeVoice,
+		},
+	}
+
+	if err := tx.Create(&defaultChannels).Error; err != nil {
+		tx.Rollback()
+		c.JSON(500, gin.H{"error": "Failed to create default channels"})
+		return
+	}
+
+	// 3. Добавляем владельца
 	member := map[string]interface{}{
 		"server_id": newServer.ID,
 		"user_id":   myUserID,
 	}
-
 	if err := tx.Table("server_members").Create(&member).Error; err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add owner to members"})
-		return
-	}
-
-	// 3. Создаем дефолтный канал "general"
-	defaultChannel := models.Channel{
-		ServerID: newServer.ID,
-		Name:     "general",
-		Type:     models.ChannelTypeText,
-	}
-	if err := tx.Create(&defaultChannel).Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create default channel"})
+		c.JSON(500, gin.H{"error": "Failed to add member"})
 		return
 	}
 
@@ -83,15 +104,18 @@ func (h *ServerHandler) CreateServer(c *gin.Context) {
 	c.JSON(http.StatusCreated, newServer)
 }
 
-// GetMyServers - Получает список серверов пользователя (заглушка для будущего)
-func (h *ServerHandler) GetMyServers(c *gin.Context) {
-	userID_interface, _ := c.Get("userID")
-	myUserID := userID_interface.(uint)
+// GetServers - Возвращает сервера, где пользователь участник
+func (h *ServerHandler) GetServers(c *gin.Context) {
+	myUserID := getUserID(c)
+	if myUserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
 	var servers []models.Server
-	// Ищем сервера, где пользователь является участником
-	err := h.DB.
-		Joins("JOIN server_members sm ON sm.server_id = servers.id").
+
+	// Простой JOIN запрос
+	err := h.DB.Joins("JOIN server_members sm ON sm.server_id = servers.id").
 		Where("sm.user_id = ?", myUserID).
 		Find(&servers).Error
 
@@ -106,7 +130,8 @@ func (h *ServerHandler) GetMyServers(c *gin.Context) {
 func (h *ServerHandler) AdminDeleteServer(c *gin.Context) {
 	id := c.Param("id")
 	if err := h.DB.Delete(&models.Server{}, id).Error; err != nil {
-		// ...
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete server"})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "server destroyed"})
 }
@@ -120,18 +145,13 @@ func (h *ServerHandler) JoinServer(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	userID_interface, _ := c.Get("userID")
-	myUserID := userID_interface.(uint)
-
-	// Проверяем, существует ли сервер
-	var server models.Server
-	if err := h.DB.First(&server, input.ServerID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+	myUserID := getUserID(c)
+	if myUserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	// Проверяем, не вступил ли уже (чтобы не было дублей)
+	// Проверяем дубликат
 	var count int64
 	h.DB.Table("server_members").Where("server_id = ? AND user_id = ?", input.ServerID, myUserID).Count(&count)
 	if count > 0 {
@@ -139,26 +159,69 @@ func (h *ServerHandler) JoinServer(c *gin.Context) {
 		return
 	}
 
-	// Добавляем в таблицу
-	member := map[string]interface{}{
-		"server_id": input.ServerID,
-		"user_id":   myUserID,
-	}
+	member := map[string]interface{}{"server_id": input.ServerID, "user_id": myUserID}
 	if err := h.DB.Table("server_members").Create(&member).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to join server"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to join"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "joined"})
+}
+
+// UpdateServer - Обновить название или аватарку (Только владелец)
+func (h *ServerHandler) UpdateServer(c *gin.Context) {
+	serverID := c.Param("id")
+	myUserID := getUserID(c)
+	if myUserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "joined", "server": server})
+	var input struct {
+		Name        string `json:"name"`
+		AvatarURL   string `json:"avatar_url"`
+		Description string `json:"description"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var server models.Server
+	if err := h.DB.First(&server, serverID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+		return
+	}
+
+	if server.OwnerID != myUserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only owner can update server"})
+		return
+	}
+
+	// Обновляем поля, если они присланы
+	if input.Name != "" {
+		server.Name = input.Name
+	}
+	if input.AvatarURL != "" {
+		server.AvatarURL = input.AvatarURL
+	}
+	if input.Description != "" {
+		server.Description = input.Description
+	}
+
+	h.DB.Save(&server)
+	c.JSON(http.StatusOK, server)
 }
 
 // LeaveServer - Покинуть сервер
 func (h *ServerHandler) LeaveServer(c *gin.Context) {
 	serverID := c.Param("id")
-	userID_interface, _ := c.Get("userID")
-	myUserID := userID_interface.(uint)
+	myUserID := getUserID(c)
+	if myUserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
-	// Нельзя выйти, если ты владелец (нужно сначала передать права или удалить сервер)
+	// Нельзя выйти, если ты владелец
 	var server models.Server
 	if err := h.DB.First(&server, serverID).Error; err == nil {
 		if server.OwnerID == myUserID {
@@ -175,4 +238,32 @@ func (h *ServerHandler) LeaveServer(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "left"})
+}
+
+// DeleteServer - Удалить сервер целиком (Только владелец)
+func (h *ServerHandler) DeleteServer(c *gin.Context) {
+	serverID := c.Param("id")
+	myUserID := getUserID(c)
+	if myUserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var server models.Server
+	if err := h.DB.First(&server, serverID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+		return
+	}
+
+	if server.OwnerID != myUserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only owner can delete server"})
+		return
+	}
+
+	if err := h.DB.Delete(&server).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete server"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }

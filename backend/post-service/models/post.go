@@ -7,14 +7,15 @@ import (
 )
 
 type Post struct {
-	ID       uint   `gorm:"primaryKey" json:"id"`
-	UserID   uint   `gorm:"not null;index" json:"user_id"`
-	Title    string `gorm:"size:255" json:"title"`
-	Content  string `gorm:"type:text;not null" json:"content"` // Основной текст поста (здесь будет Markdown)
-	ImageURL string `gorm:"type:varchar(255)" json:"image_url,omitempty"`
+	ID              uint   `gorm:"primaryKey" json:"id"`
+	UserID          uint   `gorm:"not null;index" json:"user_id"`
+	Title           string `gorm:"size:255" json:"title"`
+	Content         string `gorm:"type:text;not null" json:"content"` // Основной текст поста (здесь будет Markdown)
+	AuthorAvatarUrl string `gorm:"size:255" json:"author_avatar_url"`
+	ImageURL        string `gorm:"type:varchar(255)" json:"image_url,omitempty"`
 
 	// Виртуальные поля для фронтенда
-	UserUsername  string `gorm:"-" json:"user_username,omitempty"`
+	UserUsername  string `gorm:"size:255" json:"user_username,omitempty"`
 	LikesCount    int64  `gorm:"-" json:"likes_count"`
 	IsLikedByMe   bool   `gorm:"-" json:"is_liked_by_me"`
 	CommentsCount int64  `gorm:"-" json:"comments_count"`

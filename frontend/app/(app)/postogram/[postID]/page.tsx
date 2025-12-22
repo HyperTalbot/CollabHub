@@ -29,9 +29,9 @@ interface PostDetailType {
   image_url: string;
   user_id: number;
   user_username: string;
+  author_avatar_url: string;
   created_at: string;
   comments_count: number;
-
   likes_count: number;
   is_liked_by_me: boolean;
 }
@@ -162,14 +162,20 @@ export default function PostDetailPage() {
         {/* -------------------- ОТОБРАЖЕНИЕ ПОСТА -------------------- */}
         <div className="mb-6 pb-4 border-b">
           <div className="w-fit flex items-center space-x-3 mb-4 border border-gray-200 rounded-lg p-2 shadow-sm dark:bg-gray-700 dark:border-gray-600">
-            {/*  */}
-            <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center font-bold text-white text-lg">
-              {post.user_id}
-            </div>
+            {/* АВАТАР */}
+            <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 border border-gray-300">
+              {post.author_avatar_url ? (
+                      <img src={post.author_avatar_url} alt="avatar" className="w-full h-full object-cover" />
+                  ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-blue-500 text-white font-bold text-lg">
+                          {post.user_username?.[0]?.toUpperCase()}
+                      </div>
+                  )}
+              </div>
             <div>
               <p className="font-bold text-black dark:text-white">{post.user_username || `User ${post.user_id}`} • 🟦🔶🟢</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {/*  */}
+                {/* ИНФО */}
                 {new Date(post.created_at).toLocaleString('ru-RU', {
                 day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
                 })}
@@ -177,12 +183,12 @@ export default function PostDetailPage() {
             </div>
           </div>
 
-          {isLoggedIn && user && post.user_id !== user.id && (
-            <UserActionDropdown
-              targetUserId={post.user_id}
-              currentUserId={user.id}
-              username={post.user_username}
-            />
+          {/* Меню действий */}
+          {isLoggedIn && user && String(post.user_id) !== String(user.id) && (
+              <UserActionDropdown
+                targetUserId={post.user_id}
+                username={post.user_username}
+              />
           )}
 
           <h1 className="text-2xl font-extrabold text-black text-center mb-2 dark:text-white">{post.title}</h1>
@@ -203,6 +209,17 @@ export default function PostDetailPage() {
           
 
           {/* <p className="text-lg text-black dark:text-gray-300">{post.content}</p> */}
+
+           {/* ИЗОБРАЖЕНИЕ */}
+          {post.image_url && (
+            <div className="relative w-full h-[400px] mb-6 rounded-xl overflow-hidden shadow-sm bg-gray-100">
+              <img // Используем обычный img для простоты, если домен картинки не в next.config.js
+                src={post.image_url}
+                alt={post.title}
+                className="w-full h-full object-contain"
+              />
+            </div>
+          )}
 
           {/* 5. РЕНДЕРИНГ MARKDOWN */}
           <div className="prose prose-lg max-w-none text-black dark:text-gray-300 dark:prose-invert">

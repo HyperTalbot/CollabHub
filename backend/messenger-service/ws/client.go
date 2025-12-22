@@ -1,11 +1,5 @@
 package ws
 
-// Логика:
-// 1. Клиент присылает JSON: { "conversation_id": 1, "content": "Привет" }.
-// 2. Мы сохраняем его в БД
-// 3. Мы находим участников чата.
-// 4. Мы отправляем это сообщение всем участникам через Hub.SendToUser
-
 import (
 	"backend/messenger-service/models"
 	"backend/messenger-service/utils"
@@ -28,11 +22,9 @@ const (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	// Разрешаем CORS
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
-// Client - посредник между websocket соединением и Hub
 type Client struct {
 	Hub    *Hub
 	Conn   *websocket.Conn
@@ -41,8 +33,6 @@ type Client struct {
 	DB     *gorm.DB
 }
 
-// ServeWs - обрабатывает HTTP-запрос и переключает его на WebSocket
-// Эту функцию мы вызываем из main.go
 func ServeWs(hub *Hub, db *gorm.DB, w http.ResponseWriter, r *http.Request, userID uint) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -60,19 +50,16 @@ func ServeWs(hub *Hub, db *gorm.DB, w http.ResponseWriter, r *http.Request, user
 
 	client.Hub.Register <- client
 
-	// Запускаем горутины для чтения и записи
 	go client.WritePump()
 	go client.ReadPump()
 }
 
-// IncomingMessage - то, что присылает фронтенд
 type IncomingMessage struct {
 	ConversationID *uint  `json:"conversation_id"`
 	ChannelID      *uint  `json:"channel_id"`
 	Content        string `json:"content"`
 }
 
-// OutgoingMessage - то, что мы отправляем обратно клиентам
 type OutgoingMessage struct {
 	ID             uint      `json:"id"`
 	ConversationID *uint     `json:"conversation_id,omitempty"`
@@ -83,10 +70,9 @@ type OutgoingMessage struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-// ReadPump - читает сообщения от браузера, сохраняет в БД и рассылает
 func (c *Client) ReadPump() {
 	defer func() {
-		c.Hub.Unregister <- c // Исправлено: Unregister с большой буквы
+		c.Hub.Unregister <- c
 		c.Conn.Close()
 	}()
 
@@ -103,23 +89,20 @@ func (c *Client) ReadPump() {
 			break
 		}
 
-		// 1. Парсинг
 		var msgReq IncomingMessage
 		if err := json.Unmarshal(messageBytes, &msgReq); err != nil {
 			log.Printf("Invalid JSON: %v", err)
 			continue
 		}
 
-		// Валидация
 		if (msgReq.ConversationID == nil && msgReq.ChannelID == nil) || (msgReq.ConversationID != nil && msgReq.ChannelID != nil) {
 			continue
 		}
 
-		// --- ЛОГИКА ДЛЯ ЛИЧНЫХ ЧАТОВ ---
+		// --- ЛИЧНЫЕ ЧАТЫ ---
 		if msgReq.ConversationID != nil {
-			// Сохраняем в БД
 			newMessage := models.Message{
-				ConversationID: msgReq.ConversationID,
+				ConversationID: *msgReq.ConversationID, // <--- ИСПРАВЛЕНО (разыменование)
 				SenderID:       c.UserID,
 				Content:        msgReq.Content,
 			}
@@ -128,16 +111,23 @@ func (c *Client) ReadPump() {
 				continue
 			}
 
-			// Обновляем "Прочитано" для себя
+			// Обновляем last_message_id у самого чата
+			if err := c.DB.Model(&models.Conversation{}).
+				Where("id = ?", *msgReq.ConversationID).
+				Update("last_message_id", newMessage.ID).Error; err != nil {
+				log.Printf("Failed to update conversation last_message_id: %v", err)
+			}
+
 			c.DB.Model(&models.ConversationParticipant{}).
 				Where("conversation_id = ? AND user_id = ?", *msgReq.ConversationID, c.UserID).
 				Update("last_read_message_id", newMessage.ID)
 
-			// Подготавливаем ответ
 			username := utils.GetUsernameByID(c.UserID)
+
+			// Подготовка ответа
 			outMsg := OutgoingMessage{
 				ID:             newMessage.ID,
-				ConversationID: newMessage.ConversationID,
+				ConversationID: &newMessage.ConversationID, // <--- ИСПРАВЛЕНО (берем адрес)
 				SenderID:       newMessage.SenderID,
 				SenderUsername: username,
 				Content:        newMessage.Content,
@@ -145,10 +135,9 @@ func (c *Client) ReadPump() {
 			}
 			responseBytes, _ := json.Marshal(outMsg)
 
-			// РАССЫЛКА: Ищем участников и отправляем каждому лично через Hub.SendToUser
-
+			// Ищем участников и отправляем
 			var participants []models.User
-			// Используем сложный JOIN или Preload, чтобы найти ID участников
+			// ВАЖНО: правильный JOIN для получения участников conversation
 			c.DB.Joins("JOIN conversation_participants cp ON cp.user_id = users.id").
 				Where("cp.conversation_id = ?", *msgReq.ConversationID).
 				Find(&participants)
@@ -158,15 +147,15 @@ func (c *Client) ReadPump() {
 			}
 		}
 
-		// --- ЛОГИКА ДЛЯ КАНАЛОВ СЕРВЕРА ---
+		// --- КАНАЛЫ ---
 		if msgReq.ChannelID != nil {
-			// Находим канал, чтобы узнать сервер
+			// Находим канал
 			var channel models.Channel
 			if err := c.DB.First(&channel, *msgReq.ChannelID).Error; err != nil {
 				continue
 			}
 
-			// Проверка прав (участник ли сервера?)
+			// Проверка прав
 			var count int64
 			c.DB.Table("server_members").
 				Where("server_id = ? AND user_id = ?", channel.ServerID, c.UserID).
@@ -175,9 +164,8 @@ func (c *Client) ReadPump() {
 				continue
 			}
 
-			// Сохраняем
 			newMessage := models.Message{
-				ChannelID: msgReq.ChannelID,
+				ChannelID: msgReq.ChannelID, // ChannelID в модели *uint, так что тут ок
 				SenderID:  c.UserID,
 				Content:   msgReq.Content,
 			}
@@ -185,7 +173,6 @@ func (c *Client) ReadPump() {
 				continue
 			}
 
-			// Подготавливаем ответ
 			username := utils.GetUsernameByID(c.UserID)
 			outMsg := OutgoingMessage{
 				ID:             newMessage.ID,
@@ -197,7 +184,7 @@ func (c *Client) ReadPump() {
 			}
 			responseBytes, _ := json.Marshal(outMsg)
 
-			// РАССЫЛКА: Ищем всех членов сервера
+			// Рассылка участникам сервера
 			var memberIDs []uint
 			c.DB.Table("server_members").
 				Where("server_id = ?", channel.ServerID).
@@ -210,7 +197,6 @@ func (c *Client) ReadPump() {
 	}
 }
 
-// WritePump отправляет сообщения из канала Send в WebSocket
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -225,13 +211,11 @@ func (c *Client) WritePump() {
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-
 			w, err := c.Conn.NextWriter(websocket.TextMessage)
 			if err != nil {
 				return
 			}
 			w.Write(message)
-
 			if err := w.Close(); err != nil {
 				return
 			}

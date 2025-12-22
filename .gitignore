@@ -8,6 +8,7 @@ go.sum
 ideas.txt
 project-structure.txt
 node_modules/
+uploads/
 
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 

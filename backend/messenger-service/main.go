@@ -29,9 +29,10 @@ func main() {
 	go hub.Run()
 
 	// 2. Инициализация Хендлеров
-	conversationHandler := &handlers.ConversationHandler{DB: db.DB}
+	conversationHandler := &handlers.ConversationHandler{DB: db.DB, Hub: hub}
 	serverHandler := &handlers.ServerHandler{DB: db.DB}
 	channelHandler := &handlers.ChannelHandler{DB: db.DB}
+	msgHandler := &handlers.MessageHandler{DB: db.DB, Hub: hub}
 
 	r := gin.Default()
 
@@ -65,25 +66,33 @@ func main() {
 		protected := api.Group("/")
 		protected.Use(middleware.AuthRequired())
 		{
-			// --- ЧАТЫ (Conversations) ---
-			// Проверьте, что эти строки существуют!
+			// --- ЧАТЫ ---
 			protected.POST("/conversations", conversationHandler.StartChat)
-			protected.GET("/conversations", conversationHandler.GetMyConversations)
+			protected.GET("/conversations", conversationHandler.GetConversations) // Используем единый метод
 			protected.GET("/conversations/:id/messages", conversationHandler.GetMessages)
 			protected.POST("/conversations/:id/read", conversationHandler.MarkConversationAsRead)
 			protected.POST("/groups", conversationHandler.CreateGroup)
+			protected.PUT("/groups/:id", conversationHandler.UpdateGroup)
 
-			// --- СЕРВЕРА (Servers) ---
+			// --- СООБЩЕНИЯ (Исправлено api. -> protected.) ---
+			protected.PUT("/messages/:id", msgHandler.EditMessage)
+			protected.DELETE("/messages/:id", msgHandler.DeleteMessage)
+			protected.POST("/messages/:id/pin", msgHandler.PinMessage)
+			protected.POST("/messages/forward", msgHandler.ForwardMessage)
+			protected.POST("/messages/attachment", msgHandler.SendAttachment)
+
+			// --- СЕРВЕРА ---
 			protected.POST("/servers", serverHandler.CreateServer)
-			protected.GET("/servers", serverHandler.GetMyServers)
+			protected.GET("/servers", serverHandler.GetServers)
 			protected.POST("/servers/join", serverHandler.JoinServer)
+			protected.PUT("/servers/:id", serverHandler.UpdateServer)
 			protected.POST("/servers/:id/leave", serverHandler.LeaveServer)
+			protected.DELETE("/servers/:id", serverHandler.DeleteServer)
 
-			// КАНАЛЫ
+			// --- КАНАЛЫ ---
 			protected.POST("/channels", channelHandler.CreateChannel)
 			protected.GET("/servers/:server_id/channels", channelHandler.GetChannelsByServerID)
 			protected.DELETE("/channels/:id", channelHandler.DeleteChannel)
-
 		}
 	}
 

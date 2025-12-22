@@ -8,6 +8,7 @@ type ConversationParticipant struct {
 	LastReadMessageID uint `gorm:"default:0"` // <-- Курсор прочтения
 	CreateAt          time.Time
 	UpdatedAt         time.Time
+	JoinedAt          time.Time `json:"joined_at"`
 }
 
 // Переопределим имя таблицы, чтобы GORM использовал старую таблицу, если она есть,

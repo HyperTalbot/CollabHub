@@ -32,6 +32,12 @@ type Conversation struct {
 	// (Опционально) Поле для последнего сообщения (для превью в списке чатов)
 	LastMessageID *uint `json:"last_message_id,omitempty"`
 
+	// --- Виртуальные поля для списка чатов ---
+	LastMessageContent  string    `gorm:"-" json:"last_message_content"`
+	LastMessageAt       time.Time `gorm:"-" json:"last_message_at"`
+	LastMessageSenderID uint      `gorm:"-" json:"last_message_sender_id"` // Чтобы фронт писал "Вы: "
+	UnreadCount         int       `gorm:"-" json:"unread_count"`
+
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`

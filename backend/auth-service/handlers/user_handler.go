@@ -18,23 +18,30 @@ type UserResponse struct {
 	Username string `json:"username"`
 }
 
+// GetUser - Получает пользователя по ID или по Username
 func (h *UserHandler) GetUserByID(c *gin.Context) {
-	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
-		return
-	}
+	param := c.Param("id") // Это может быть "8" или "techmaster"
 
 	var user models.User
-	if err := h.DB.First(&user, userID).Error; err != nil {
+	var err error
+
+	// Пытаемся определить, число это или строка
+	if id, convErr := strconv.ParseUint(param, 10, 64); convErr == nil {
+		// Это ID
+		err = h.DB.First(&user, id).Error
+	} else {
+		// Это Username
+		err = h.DB.Where("username = ?", param).First(&user).Error
+	}
+
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, UserResponse{
-		ID:       user.ID,
-		Username: user.Username,
-	})
+	// Не возвращаем пароль и служебные поля
+	user.PasswordHash = ""
+	c.JSON(http.StatusOK, user)
 }
 
 // SearchUsers ищет пользователей по username

@@ -23,7 +23,7 @@ type Channel struct {
 	// Связь с сообщениями (вместо ConversationID будет ChannelID)
 	// Messages []Message `gorm:"foreignKey:ChannelID"`
 
-	CreateAt  time.Time
+	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 }

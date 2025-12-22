@@ -24,9 +24,6 @@ func main() {
 
 	r := gin.Default()
 
-	// ВАЖНО: Раздача статики (чтобы картинки открывались в браузере)
-	r.Static("/uploads", "./uploads")
-
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -91,7 +88,7 @@ func main() {
 		}
 	}
 
-	apiV1.POST("/upload", middlewares.AuthRequired(), handlers.UploadImage)
+	apiV1.POST("/uploads", middlewares.AuthRequired(), handlers.UploadImage)
 
 	log.Println("Starting Posts service on :8081")
 	if err := r.Run(":8081"); err != nil {

@@ -11,6 +11,7 @@ interface User {
   username: string;
   email: string;
   role: string;
+  avatar_url: string;
   // Добавьте остальные поля, которые возвращает ваш Go-сервис
 }
 

@@ -8,8 +8,8 @@ import { useAuth } from "@/context/AuthContext";
 import { 
   Home, MessageCircle, Music, Mail, LayoutGrid, Brain, Shield, X, Menu,
   Plus, Search, Bell, User, Settings, Heart, RotateCcw, UserCheck, Bot,
-  Pencil, Star, LogOut, Palette, Languages, LucideIcon, // <-- Импортируем тип LucideIcon
-} from 'lucide-react';
+  Pencil, Star, LogOut, Palette, Languages, LucideIcon, NotebookPen
+} from 'lucide-react'; // <-- Импортируем тип LucideIcon
 import CreateFanMenu, { CreationMode } from '../create/CreateFanMenu';
 import CreateContentModal from '../create/CreateContentModal';
 import ThemeModal from '../theme/ThemeModal';
@@ -33,7 +33,10 @@ function NavLink({ href, iconSrc, label }: { href: string, iconSrc: string, labe
                 src={iconSrc} 
                 alt={label} 
                 layout="fill" 
-                objectFit="contain"
+                style={{ objectFit: "contain" }}
+                // objectFit="contain"
+                // width={30}
+                // height={30}
             />
         </div>
         <span className="text-xs mt-1 text-black font-medium dark:text-gray-300">{label}</span> 
@@ -51,8 +54,11 @@ function IconLink({ iconSrc, label }: { iconSrc: string, label: string }) {
         <Image 
             src={iconSrc} 
             alt={label} 
-            layout="fill" 
-            objectFit="contain"
+            // layout="fill" 
+            style={{ objectFit: "cover"}}
+            // objectFit="contain"
+            width={25}
+            height={25}
         />
       </div>
       <span className="text-xs mt-0 text-black dark:text-gray-300">{label}</span>
@@ -140,7 +146,7 @@ export default function AppHeader({
               <NavLink href="/homepage" iconSrc="/logo/home.svg" label="Home" />
               <NavLink href="/postogram" iconSrc="/logo/postogram.svg" label="Postogram" />
               <NavLink href="/symphonya" iconSrc="/logo/symphonya.svg" label="Symphonya" />
-              <NavLink href="/misable" iconSrc="/logo/misable.svg" label="Misable" />
+              <NavLink href="/misable" iconSrc="/logo/misable.svg" label="Bubble" />
 						</div>
 						<button
 							onClick={() => setPanel1Visible(false)}
@@ -172,7 +178,8 @@ export default function AppHeader({
 						
 						{/* ИЗМЕНЕНИЕ: space-x-6 для увеличения интервала */}
 						<div className="flex-1 flex justify-end space-x-4 pr-4 items-center">
-							<IconLink iconSrc="/icons/heart.svg" label="Избранное" />
+							<IconLink iconSrc="/icons/notes.svg" label="Заметки" />
+              <IconLink iconSrc="/icons/heart.svg" label="Избранное" />
               <IconLink iconSrc="/icons/history.svg" label="История" />
               <IconLink iconSrc="/icons/subscriptions.svg" label="Подписки" />
               <IconLink iconSrc="/icons/stars.svg" label="Наши звезды" />
@@ -210,8 +217,18 @@ export default function AppHeader({
 							<IconLink iconSrc="/icons/search.svg" label="Поиск" />
               <IconLink iconSrc="/icons/bell.svg" label="Уведомления" />
               {/* <IconLink iconSrc="/icons/profile.svg" label="Профиль" /> */}
-              <div className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center text-white text-xs">
+              {/* <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs">
                     {currentUser?.username?.[0]?.toUpperCase()}
+              </div> */}
+
+              <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden border border-gray-300 dark:border-gray-600">
+                {currentUser?.avatar_url ? (
+                    <img src={currentUser.avatar_url} alt={currentUser.username} className="w-full h-full object-cover" />
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center text-xs font-bold text-gray-500">
+                        {currentUser?.username?.[0]?.toUpperCase()}
+                    </div>
+                )}
               </div>
 
               <div className='relative'>

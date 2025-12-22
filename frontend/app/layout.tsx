@@ -14,11 +14,6 @@ export default function RootLayout({
   return (
     <html lang="ru" suppressHydrationWarning>
       <head>
-        <link
-          rel='preload'
-          as='image'
-          href='cosmo.jpg'
-        />
       </head>
       <body>
         <ThemeProvider>

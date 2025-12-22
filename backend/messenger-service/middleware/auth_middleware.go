@@ -38,7 +38,7 @@ func AuthRequired() gin.HandlerFunc {
 
 		// Сохраняем ID пользователя в контексте Gin.
 		// Теперь следующий обработчик (CreatePost) сможет его прочитать.
-		c.Set("userID", claims.UserID)
+		c.Set("user_id", claims.UserID)
 
 		c.Next() // Продолжить выполнение запроса к основному обработчику
 	}
