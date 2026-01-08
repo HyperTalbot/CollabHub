@@ -2,7 +2,7 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
-const MEDIA_API_URL = 'http://localhost:8084/api/v1';
+const MEDIA_API_URL = 'http://localhost:8087/api/v1';
 
 export const uploadFile = async (file: File, type: string = 'misc'): Promise<string> => {
     const token = Cookies.get('authToken') || localStorage.getItem('authToken');

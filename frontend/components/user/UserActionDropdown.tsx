@@ -38,7 +38,7 @@ export default function UserActionsDropdown({ targetUserId, currentUserId, usern
         return;
     }
     try {
-      await axios.post('http://localhost:8082/api/v1/conversations', 
+      await axios.post('http://localhost:8086/api/v1/conversations', 
         { target_user_id: targetUserId },
         { headers: { 'Authorization': `Bearer ${token}` } }
       );

@@ -1,64 +1,198 @@
+// frontend/app/(app)/symphonya/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { MusicPlayer } from '@/components/music/MusicPlayer';
+import { Search, Play } from 'lucide-react';
 
-const SongCard = ({ title, artist, duration, cover }: any) => (
-  <div className="group cursor-pointer">
+interface Track {
+  id: number;
+  title: string;
+  artist: string;
+  album?: string;
+  cover_url: string;
+  audio_url: string;
+  duration: number;
+  genre?: string;
+  play_count?: number;
+}
+
+interface Playlist {
+  id: number;
+  name: string;
+  description: string;
+  cover_url: string;
+  tracks?: Track[];
+}
+
+const API_URL = 'http://localhost:8085/api/music';
+
+const SongCard = ({ track, onPlay }: { track: Track; onPlay: () => void }) => (
+  <div className="group cursor-pointer" onClick={onPlay}>
     <div className="relative aspect-square rounded-lg overflow-hidden mb-3">
-      <div className={`w-full h-full bg-gradient-to-br ${cover} flex items-center justify-center text-white text-6xl group-hover:scale-105 transition-transform`}>
-        🎵
-      </div>
+      <img 
+        src={track.cover_url} 
+        alt={track.title}
+        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+      />
       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
-        <button className="opacity-0 group-hover:opacity-100 bg-white rounded-full p-4 text-4xl hover:scale-110 transition">
-          ▶️
+        <button className="opacity-0 group-hover:opacity-100 bg-white rounded-full p-4 hover:scale-110 transition">
+          <Play size={24} className="text-black ml-1" />
         </button>
       </div>
     </div>
-    <h3 className="font-semibold text-white text-sm line-clamp-1">{title}</h3>
-    <p className="text-gray-400 text-sm">{artist}</p>
+    <h3 className="font-semibold text-white text-sm line-clamp-1">{track.title}</h3>
+    <p className="text-gray-400 text-sm line-clamp-1">{track.artist}</p>
   </div>
 );
 
-const PlaylistCard = ({ name, description, cover }: any) => (
-  <div className="group cursor-pointer">
+const PlaylistCard = ({ playlist, onPlay }: { playlist: Playlist; onPlay: () => void }) => (
+  <div className="group cursor-pointer" onClick={onPlay}>
     <div className="relative aspect-square rounded-lg overflow-hidden mb-3">
-      <div className={`w-full h-full bg-gradient-to-br ${cover} flex items-center justify-center text-white text-5xl group-hover:scale-105 transition-transform`}>
-        📀
-      </div>
+      <img 
+        src={playlist.cover_url} 
+        alt={playlist.name}
+        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+      />
       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
-        <button className="opacity-0 group-hover:opacity-100 bg-white rounded-full p-4 text-4xl hover:scale-110 transition">
-          ▶️
+        <button className="opacity-0 group-hover:opacity-100 bg-white rounded-full p-4 hover:scale-110 transition">
+          <Play size={24} className="text-black ml-1" />
         </button>
       </div>
     </div>
-    <h3 className="font-semibold text-white text-sm line-clamp-1">{name}</h3>
-    <p className="text-gray-400 text-sm line-clamp-2">{description}</p>
+    <h3 className="font-semibold text-white text-sm line-clamp-1">{playlist.name}</h3>
+    <p className="text-gray-400 text-sm line-clamp-2">{playlist.description}</p>
   </div>
+);
+
+const GenreChip = ({ genre, onClick }: { genre: string; onClick: () => void }) => (
+  <button 
+    onClick={onClick}
+    className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-full text-white text-sm font-medium transition whitespace-nowrap"
+  >
+    {genre}
+  </button>
 );
 
 export default function SymphonyaPage() {
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [genres, setGenres] = useState<string[]>([]);
+  const [quickPicks, setQuickPicks] = useState<Track[]>([]);
+  const [recommended, setRecommended] = useState<Track[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Track[]>([]);
+  
+  // Player state
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [queue, setQueue] = useState<Track[]>([]);
+  const [isPlayerVisible, setIsPlayerVisible] = useState(false);
 
-  const quickPicks = [
-    { title: 'Sunset Dreams', artist: 'The Waves', duration: '3:45', cover: 'from-orange-500 to-pink-500' },
-    { title: 'Electric Love', artist: 'Neon Hearts', duration: '4:12', cover: 'from-purple-500 to-blue-500' },
-    { title: 'Midnight City', artist: 'Urban Soul', duration: '3:28', cover: 'from-indigo-500 to-purple-500' },
-    { title: 'Summer Vibes', artist: 'Beach Boys', duration: '3:55', cover: 'from-yellow-500 to-orange-500' },
-    { title: 'Rainy Day', artist: 'Acoustic Dreams', duration: '4:03', cover: 'from-gray-500 to-blue-500' },
-    { title: 'Dance Floor', artist: 'DJ Pulse', duration: '3:18', cover: 'from-pink-500 to-red-500' },
-  ];
+  // Загрузка данных
+  useEffect(() => {
+    loadGenres();
+    loadQuickPicks();
+    loadRecommended();
+    loadPlaylists();
+  }, []);
 
-  const playlists = [
-    { name: 'Топ 50 - Россия', description: 'Самые популярные треки недели', cover: 'from-red-500 to-orange-500' },
-    { name: 'Chill Vibes', description: 'Расслабляющая музыка для работы', cover: 'from-blue-400 to-cyan-400' },
-    { name: 'Workout Mix', description: 'Энергичная музыка для тренировок', cover: 'from-green-500 to-emerald-500' },
-    { name: 'Ретро 80-90s', description: 'Хиты из прошлого', cover: 'from-purple-500 to-pink-500' },
-  ];
+  const loadGenres = async () => {
+    try {
+      const res = await fetch(`${API_URL}/genres`);
+      const data = await res.json();
+      setGenres(data || []);
+    } catch (error) {
+      console.error('Failed to load genres:', error);
+    }
+  };
+
+  const loadQuickPicks = async () => {
+    try {
+      const res = await fetch(`${API_URL}/quick-picks`);
+      const data = await res.json();
+      setQuickPicks(data || []);
+    } catch (error) {
+      console.error('Failed to load quick picks:', error);
+    }
+  };
+
+  const loadRecommended = async () => {
+    try {
+      const res = await fetch(`${API_URL}/recommended`);
+      const data = await res.json();
+      setRecommended(data || []);
+    } catch (error) {
+      console.error('Failed to load recommended:', error);
+    }
+  };
+
+  const loadPlaylists = async () => {
+    try {
+      const res = await fetch(`${API_URL}/playlists/recommended`);
+      const data = await res.json();
+      setPlaylists(data || []);
+    } catch (error) {
+      console.error('Failed to load playlists:', error);
+    }
+  };
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setSearchResults(data || []);
+    } catch (error) {
+      console.error('Search failed:', error);
+    }
+  };
+
+  const playTrack = async (track: Track, queueTracks: Track[] = []) => {
+    setCurrentTrack(track);
+    setQueue(queueTracks);
+    setIsPlayerVisible(true);
+
+    // Увеличиваем счетчик прослушиваний
+    try {
+      await fetch(`${API_URL}/tracks/${track.id}/play, { method: 'POST' }`);
+    } catch (error) {
+      console.error('Failed to increment play count:', error);
+    }
+  };
+
+  const playPlaylist = async (playlist: Playlist) => {
+    if (playlist.tracks && playlist.tracks.length > 0) {
+      playTrack(playlist.tracks[0], playlist.tracks.slice(1));
+    }
+  };
+
+  const handleNext = () => {
+    if (queue.length > 0) {
+      const [nextTrack, ...remainingQueue] = queue;
+      setCurrentTrack(nextTrack);
+      setQueue(remainingQueue);
+    }
+  };
+
+  const handlePrevious = () => {
+    // Для упрощения, просто перезапускаем текущий трек
+    if (currentTrack) {
+      playTrack(currentTrack, queue);
+    }
+  };
+
+  const handleTrackEnd = () => {
+    handleNext();
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-purple-900 to-gray-900 pb-32">
       {/* Header */}
-      <header className="bg-black/40 backdrop-blur-md border-b border-white/10 sticky top-0 z-50">
+      <header className="bg-black/40 backdrop-blur-md border-b border-white/10 sticky top-0 z-40">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-8">
             <div className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-orange-500 bg-clip-text text-transparent">
@@ -71,18 +205,47 @@ export default function SymphonyaPage() {
             </nav>
           </div>
           <div className="flex items-center gap-4">
-            <input
-              type="search"
-              placeholder="Песни, исполнители, альбомы..."
-              className="w-80 px-4 py-2 bg-white/10 text-white rounded-full focus:outline-none focus:bg-white/20 placeholder-gray-400"
-            />
+            <div className="relative">
+              <input
+                type="search"
+                placeholder="Песни, исполнители, альбомы..."
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                className="w-80 px-4 py-2 pl-10 bg-white/10 text-white rounded-full focus:outline-none focus:bg-white/20 placeholder-gray-400"
+              />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            </div>
             <button className="w-10 h-10 bg-gradient-to-br from-pink-500 to-orange-500 rounded-full"></button>
           </div>
         </div>
+
+        {/* Search Results */}
+        {searchResults.length > 0 && (
+          <div className="container mx-auto px-6 py-4 bg-gray-800/50">
+            <h3 className="text-white font-semibold mb-3">Результаты поиска</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {searchResults.slice(0, 6).map((track) => (
+                <SongCard key={track.id} track={track} onPlay={() => playTrack(track, searchResults.slice(1))} />
+              ))}
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Main Content */}
       <div className="container mx-auto px-6 py-8">
+        {/* Genres */}
+        {genres.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-white mb-4">Жанры</h2>
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+              {genres.map((genre, index) => (
+                <GenreChip key={index} genre={genre} onClick={() => handleSearch(genre)} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Featured Section */}
         <div className="mb-12">
           <div className="relative rounded-2xl overflow-hidden h-96 bg-gradient-to-br from-pink-600 to-purple-600">
@@ -91,125 +254,85 @@ export default function SymphonyaPage() {
               <p className="text-pink-300 text-sm font-semibold mb-2">Плейлист дня</p>
               <h1 className="text-5xl font-bold text-white mb-4">Топ хиты 2025</h1>
               <p className="text-gray-300 mb-6">Самая популярная музыка прямо сейчас</p>
-              <button className="bg-white text-black px-8 py-3 rounded-full font-bold hover:scale-105 transition">
-                ▶️ Играть
+              <button 
+                onClick={() => quickPicks.length > 0 && playTrack(quickPicks[0], quickPicks.slice(1))}
+                className="bg-white text-black px-8 py-3 rounded-full font-bold hover:scale-105 transition flex items-center gap-2"
+              >
+                <Play size={20} className="ml-1" />
+                Играть
               </button>
             </div>
           </div>
         </div>
 
         {/* Quick Picks */}
-        <div className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-3xl font-bold text-white">Быстрый выбор</h2>
-            <button className="text-gray-400 hover:text-white text-sm">Показать все</button>
+        {quickPicks.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-3xl font-bold text-white">Быстрый выбор</h2>
+              <button className="text-gray-400 hover:text-white text-sm">Показать все</button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {quickPicks.map((track) => (
+                <SongCard key={track.id} track={track} onPlay={() => playTrack(track, quickPicks.filter(t => t.id !== track.id))} />
+              ))}
+            </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {quickPicks.map((song, index) => (
-              <SongCard key={index} {...song} />
-            ))}
+        )}
+
+        {/* Recommended Tracks */}
+        {recommended.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-3xl font-bold text-white">Рекомендации для вас</h2>
+              <button className="text-gray-400 hover:text-white text-sm">Показать все</button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {recommended.slice(0, 6).map((track) => (
+                <SongCard key={track.id} track={track} onPlay={() => playTrack(track, recommended.filter(t => t.id !== track.id))} />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Playlists */}
-        <div className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-3xl font-bold text-white">Плейлисты для тебя</h2>
-            <button className="text-gray-400 hover:text-white text-sm">Показать все</button>
+        {playlists.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-3xl font-bold text-white">Плейлисты для тебя</h2>
+              <button className="text-gray-400 hover:text-white text-sm">Показать все</button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {playlists.map((playlist) => (
+                <PlaylistCard key={playlist.id} playlist={playlist} onPlay={() => playPlaylist(playlist)} />
+              ))}
+            </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {playlists.map((playlist, index) => (
-              <PlaylistCard key={index} {...playlist} />
-            ))}
-          </div>
-        </div>
-
-        {/* Recently Played */}
-        <div className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-3xl font-bold text-white">Недавно прослушанное</h2>
-            <button className="text-gray-400 hover:text-white text-sm">Показать все</button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {quickPicks.slice(0, 4).map((song, index) => (
-              <SongCard key={index} {...song} />
-            ))}
-          </div>
-        </div>
-
-        {/* Genres */}
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-6">Жанры</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { name: 'Поп', color: 'from-pink-500 to-rose-500' },
-              { name: 'Рок', color: 'from-red-600 to-orange-600' },
-              { name: 'Хип-хоп', color: 'from-purple-600 to-indigo-600' },
-              { name: 'Электроника', color: 'from-cyan-500 to-blue-600' },
-              { name: 'Джаз', color: 'from-amber-600 to-yellow-500' },
-              { name: 'Классика', color: 'from-gray-600 to-slate-700' },
-              { name: 'Инди', color: 'from-green-600 to-emerald-600' },
-              { name: 'R&B', color: 'from-pink-600 to-purple-600' },
-            ].map((genre, index) => (
-              <div 
-                key={index}
-                className={`bg-gradient-to-br ${genre.color} rounded-xl p-6 cursor-pointer hover:scale-105 transition`}
-              >
-                <h3 className="text-2xl font-bold text-white">{genre.name}</h3>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
+      
+      {/* Music Player */}
+      {isPlayerVisible && currentTrack && (
+        <MusicPlayer
+          currentTrack={currentTrack}
+          queue={queue}
+          onNext={handleNext}
+          onPrevious={handlePrevious}
+          onTrackEnd={handleTrackEnd}
+          onClose={() => setIsPlayerVisible(false)}
+        />
+      )}
 
-      {/* Player Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 px-6 py-4 z-50">
-        <div className="container mx-auto flex items-center justify-between">
-          {/* Current Track Info */}
-          <div className="flex items-center gap-4 flex-1">
-            <div className="w-14 h-14 bg-gradient-to-br from-pink-500 to-orange-500 rounded-lg flex items-center justify-center text-white text-2xl">
-              🎵
-            </div>
-            <div>
-              <p className="text-white font-semibold">Sunset Dreams</p>
-              <p className="text-gray-400 text-sm">The Waves</p>
-            </div>
-            <button className="text-gray-400 hover:text-white ml-4">❤️</button>
-          </div>
-
-          {/* Player Controls */}
-          <div className="flex-1 max-w-2xl">
-            <div className="flex items-center justify-center gap-6 mb-2">
-              <button className="text-gray-400 hover:text-white">🔀</button>
-              <button className="text-gray-400 hover:text-white text-2xl">⏮️</button>
-              <button 
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="bg-white rounded-full p-3 hover:scale-105 transition text-2xl"
-              >
-                {isPlaying ? '⏸️' : '▶️'}
-              </button>
-              <button className="text-gray-400 hover:text-white text-2xl">⏭️</button>
-              <button className="text-gray-400 hover:text-white">🔁</button>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">1:23</span>
-              <div className="flex-1 h-1 bg-gray-700 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-pink-500 to-orange-500 w-1/3"></div>
-              </div>
-              <span className="text-xs text-gray-400">3:45</span>
-            </div>
-          </div>
-
-          {/* Volume & Options */}
-          <div className="flex items-center gap-4 flex-1 justify-end">
-            <button className="text-gray-400 hover:text-white">📋</button>
-            <button className="text-gray-400 hover:text-white">🔊</button>
-            <div className="w-24 h-1 bg-gray-700 rounded-full overflow-hidden">
-              <div className="h-full bg-white w-2/3"></div>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* CSS для скрытия scrollbar */}
+      <style jsx global>{`
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   );
 }

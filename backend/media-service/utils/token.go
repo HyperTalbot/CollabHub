@@ -1,4 +1,4 @@
-// utils/token.go
+// backend/media-service/utils/token.go
 package utils
 
 import (

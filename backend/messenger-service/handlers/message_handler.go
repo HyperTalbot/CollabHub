@@ -1,14 +1,15 @@
+// /backend/messenger-service/handlers/message_handler.go
 package handlers
 
 import (
 	"backend/messenger-service/models"
 	"backend/messenger-service/ws"
+	"bytes"
 	"encoding/json"
-	"fmt"
+	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -17,28 +18,24 @@ import (
 	"gorm.io/gorm"
 )
 
+const MAX_MESSAGE_LENGTH = 4096
+
 type MessageHandler struct {
 	DB  *gorm.DB
 	Hub *ws.Hub
 }
 
-// Вспомогательная функция для рассылки через REST-методы
+// broadcastToConversation принимает uint ID, а не указатель
 func (h *MessageHandler) broadcastToConversation(convID uint, payload interface{}) {
-	// 1. Сериализуем данные
 	data, _ := json.Marshal(payload)
-
 	if h.Hub == nil {
-		log.Println("[WARN] Hub is nil, skip broadcast")
 		return
 	}
-
-	// 2. Находим участников чата
 	var userIDs []uint
 	h.DB.Table("conversation_participants").
 		Where("conversation_id = ?", convID).
 		Pluck("user_id", &userIDs)
 
-	// 3. Отправляем в Hub
 	h.Hub.Broadcast <- ws.BroadcastMessage{
 		UserIDs: userIDs,
 		Data:    data,
@@ -50,7 +47,9 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 	userID := c.GetUint("user_id")
 
 	var input struct {
-		ConversationID uint   `json:"conversation_id"`
+		ConversationID *uint  `json:"conversation_id"`
+		GroupID        *uint  `json:"group_id"`
+		ChannelID      *uint  `json:"channel_id"`
 		Content        string `json:"content"`
 		ReplyToID      *uint  `json:"reply_to_id"`
 	}
@@ -60,34 +59,91 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	msg := models.Message{
-		ConversationID: input.ConversationID,
-		SenderID:       userID,
-		Content:        input.Content,
-		ReplyToID:      input.ReplyToID,
-		CreatedAt:      time.Now(),
-	}
-
-	if err := h.DB.Create(&msg).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save"})
+	// Валидация: должно быть указано хотя бы одно
+	if input.ConversationID == nil && input.GroupID == nil && input.ChannelID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "conversation_id, group_id or channel_id required"})
 		return
 	}
 
-	// Отправляем WS уведомление
-	wsPayload := map[string]interface{}{
-		"type": "new_message",
-		"payload": map[string]interface{}{
-			"id":              msg.ID,
-			"conversation_id": msg.ConversationID,
-			"sender_id":       msg.SenderID,
-			"content":         msg.Content,
-			"reply_to_id":     msg.ReplyToID,
-			"created_at":      msg.CreatedAt,
-		},
-	}
-	h.broadcastToConversation(msg.ConversationID, wsPayload)
+	// Разбиваем длинные сообщения на части
+	messages := splitMessage(input.Content, MAX_MESSAGE_LENGTH)
 
-	c.JSON(http.StatusOK, msg)
+	var createdMessages []models.Message
+
+	for _, content := range messages {
+		msg := models.Message{
+			ConversationID: input.ConversationID,
+			GroupID:        input.GroupID,
+			ChannelID:      input.ChannelID,
+			SenderID:       userID,
+			Content:        content,
+			ReplyToID:      input.ReplyToID,
+			CreatedAt:      time.Now(),
+		}
+
+		if err := h.DB.Create(&msg).Error; err != nil {
+			log.Printf("❌ Failed to save message: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save message"})
+			return
+		}
+
+		// Загружаем отправителя
+		var sender models.User
+		h.DB.First(&sender, userID)
+
+		// WebSocket уведомление
+		wsPayload := map[string]interface{}{
+			"type": "new_message",
+			"payload": map[string]interface{}{
+				"id":              msg.ID,
+				"conversation_id": msg.ConversationID,
+				"group_id":        msg.GroupID,
+				"channel_id":      msg.ChannelID,
+				"sender_id":       msg.SenderID,
+				"sender_username": sender.Username,
+				"sender_avatar":   sender.AvatarURL,
+				"content":         msg.Content,
+				"reply_to_id":     msg.ReplyToID,
+				"created_at":      msg.CreatedAt,
+			},
+		}
+
+		// Отправка через WebSocket
+		if msg.ConversationID != nil {
+			h.broadcastToConversation(*msg.ConversationID, wsPayload)
+		} else if msg.GroupID != nil {
+			h.broadcastToGroup(*msg.GroupID, wsPayload)
+		} else if msg.ChannelID != nil {
+			h.broadcastToChannel(*msg.ChannelID, wsPayload)
+		}
+
+		createdMessages = append(createdMessages, msg)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"messages": createdMessages,
+		"count":    len(createdMessages),
+	})
+}
+
+// Вспомогательная функция для разбиения сообщений
+func splitMessage(content string, maxLen int) []string {
+	if len(content) <= maxLen {
+		return []string{content}
+	}
+
+	var messages []string
+	runes := []rune(content)
+
+	for i := 0; i < len(runes); i += maxLen {
+		end := i + maxLen
+		if end > len(runes) {
+			end = len(runes)
+		}
+		messages = append(messages, string(runes[i:end]))
+	}
+
+	return messages
 }
 
 // 2. Редактирование
@@ -120,15 +176,17 @@ func (h *MessageHandler) EditMessage(c *gin.Context) {
 	})
 
 	// WS Event
-	h.broadcastToConversation(msg.ConversationID, map[string]interface{}{
-		"type": "message_updated",
-		"payload": map[string]interface{}{
-			"id":              msg.ID,
-			"conversation_id": msg.ConversationID,
-			"content":         input.Content,
-			"is_edited":       true,
-		},
-	})
+	if msg.ConversationID != nil {
+		h.broadcastToConversation(*msg.ConversationID, map[string]interface{}{
+			"type": "message_updated",
+			"payload": map[string]interface{}{
+				"id":              msg.ID,
+				"conversation_id": msg.ConversationID,
+				"content":         input.Content,
+				"is_edited":       true,
+			},
+		})
+	}
 
 	c.JSON(http.StatusOK, msg)
 }
@@ -149,17 +207,19 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 		return
 	}
 
-	convID := msg.ConversationID // Сохраняем ID перед удалением
+	convID := msg.ConversationID
 	h.DB.Delete(&msg)
 
 	// WS Event
-	h.broadcastToConversation(convID, map[string]interface{}{
-		"type": "message_deleted",
-		"payload": map[string]interface{}{
-			"id":              msg.ID,
-			"conversation_id": convID,
-		},
-	})
+	if convID != nil {
+		h.broadcastToConversation(*convID, map[string]interface{}{
+			"type": "message_deleted",
+			"payload": map[string]interface{}{
+				"id":              msg.ID,
+				"conversation_id": convID,
+			},
+		})
+	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
@@ -167,6 +227,7 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 // 4. Закрепление (Pin)
 func (h *MessageHandler) PinMessage(c *gin.Context) {
 	msgID := c.Param("id")
+	// userID := c.GetUint("user_id")
 
 	var msg models.Message
 	if err := h.DB.First(&msg, msgID).Error; err != nil {
@@ -174,18 +235,41 @@ func (h *MessageHandler) PinMessage(c *gin.Context) {
 		return
 	}
 
+	// Переключаем статус закрепления
 	newStatus := !msg.IsPinned
 	h.DB.Model(&msg).Update("is_pinned", newStatus)
 
 	// WS Event
-	h.broadcastToConversation(msg.ConversationID, map[string]interface{}{
+	var recipients []uint
+	if msg.ConversationID != nil {
+		h.DB.Table("conversation_participants").
+			Where("conversation_id = ?", *msg.ConversationID).
+			Pluck("user_id", &recipients)
+	} else if msg.GroupID != nil {
+		h.DB.Table("group_members").
+			Where("group_id = ?", *msg.GroupID).
+			Pluck("user_id", &recipients)
+	} else if msg.ChannelID != nil {
+		var channel models.Channel
+		h.DB.First(&channel, *msg.ChannelID)
+		h.DB.Table("server_members").
+			Where("server_id = ?", channel.ServerID).
+			Pluck("user_id", &recipients)
+	}
+
+	wsPayload := map[string]interface{}{
 		"type": "message_pinned",
 		"payload": map[string]interface{}{
-			"id":              msg.ID,
-			"conversation_id": msg.ConversationID,
-			"is_pinned":       newStatus,
+			"message_id": msg.ID,
+			"is_pinned":  newStatus,
 		},
-	})
+	}
+
+	data, _ := json.Marshal(wsPayload)
+	h.Hub.Broadcast <- ws.BroadcastMessage{
+		UserIDs: recipients,
+		Data:    data,
+	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "toggled", "is_pinned": newStatus})
 }
@@ -209,7 +293,7 @@ func (h *MessageHandler) ForwardMessage(c *gin.Context) {
 	}
 
 	newMsg := models.Message{
-		ConversationID: input.TargetChatID,
+		ConversationID: &input.TargetChatID, // Исправлено: берем адрес
 		SenderID:       userID,
 		Content:        original.Content,
 		ForwardedFrom:  &original.SenderID,
@@ -217,7 +301,6 @@ func (h *MessageHandler) ForwardMessage(c *gin.Context) {
 	}
 	h.DB.Create(&newMsg)
 
-	// WS Event для целевого чата
 	wsPayload := map[string]interface{}{
 		"type": "new_message",
 		"payload": map[string]interface{}{
@@ -229,25 +312,21 @@ func (h *MessageHandler) ForwardMessage(c *gin.Context) {
 			"created_at":      newMsg.CreatedAt,
 		},
 	}
-	h.broadcastToConversation(newMsg.ConversationID, wsPayload)
+
+	if newMsg.ConversationID != nil {
+		h.broadcastToConversation(*newMsg.ConversationID, wsPayload)
+	}
 
 	c.JSON(http.StatusOK, newMsg)
 }
 
+// ИСПРАВЛЕННАЯ версия SendAttachment
 func (h *MessageHandler) SendAttachment(c *gin.Context) {
 	userID := c.GetUint("user_id")
 
 	convIDStr := c.PostForm("conversation_id")
-	if convIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "conversation_id required"})
-		return
-	}
-
-	conversationID, err := strconv.ParseUint(convIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid conversation_id"})
-		return
-	}
+	groupIDStr := c.PostForm("group_id")     // ДОБАВИТЬ
+	channelIDStr := c.PostForm("channel_id") // ДОБАВИТЬ
 
 	// Получаем файл
 	file, err := c.FormFile("file")
@@ -259,40 +338,104 @@ func (h *MessageHandler) SendAttachment(c *gin.Context) {
 	// Определяем тип
 	contentType := file.Header.Get("Content-Type")
 	attachmentType := "file"
+	mediaEndpoint := "/upload/file"
 
 	switch {
 	case strings.HasPrefix(contentType, "audio/"):
 		attachmentType = "audio"
+		mediaEndpoint = "/upload/audio"
 	case strings.HasPrefix(contentType, "image/"):
 		attachmentType = "image"
+		mediaEndpoint = "/upload/image"
 	case strings.HasPrefix(contentType, "video/"):
 		attachmentType = "video"
+		mediaEndpoint = "/upload/video"
 	}
 
-	// Папка
-	uploadDir := "uploads"
-	_ = os.MkdirAll(uploadDir, 0755)
+	// Загружаем файл в media-service
+	var b bytes.Buffer
+	writer := multipart.NewWriter(&b)
 
-	filename := fmt.Sprintf(
-		"%d_%d_%s",
-		time.Now().Unix(),
-		userID,
-		file.Filename,
-	)
-	path := filepath.Join(uploadDir, filename)
+	// Открываем файл
+	fileData, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read file"})
+		return
+	}
+	defer fileData.Close()
 
-	if err := c.SaveUploadedFile(file, path); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
+	// Добавляем файл в multipart
+	fw, err := writer.CreateFormFile("file", file.Filename)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create form"})
 		return
 	}
 
-	// Создаем сообщение
+	if _, err := io.Copy(fw, fileData); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to copy file"})
+		return
+	}
+	writer.Close()
+
+	// Отправляем в media-service
+	token := c.GetHeader("Authorization")
+	req, err := http.NewRequest("POST", "http://localhost:8087/api/v1"+mediaEndpoint, &b)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+		return
+	}
+
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload to media service"})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Media service error"})
+		return
+	}
+
+	// Парсим ответ от media-service
+	var uploadResp struct {
+		URL      string `json:"url"`
+		Filename string `json:"filename"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&uploadResp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse response"})
+		return
+	}
+
+	// Создаем сообщение с медиа
 	msg := models.Message{
-		ConversationID: uint(conversationID),
 		SenderID:       userID,
-		AttachmentURL:  path,
+		AttachmentURL:  uploadResp.URL,
 		AttachmentType: attachmentType,
+		Content:        file.Filename,
 		CreatedAt:      time.Now(),
+	}
+
+	// Устанавливаем правильный ID чата
+	if convIDStr != "" {
+		convID, _ := strconv.ParseUint(convIDStr, 10, 64)
+		convIDUint := uint(convID)
+		msg.ConversationID = &convIDUint
+	} else if groupIDStr != "" {
+		groupID, _ := strconv.ParseUint(groupIDStr, 10, 64)
+		groupIDUint := uint(groupID)
+		msg.GroupID = &groupIDUint
+	} else if channelIDStr != "" {
+		channelID, _ := strconv.ParseUint(channelIDStr, 10, 64)
+		channelIDUint := uint(channelID)
+		msg.ChannelID = &channelIDUint
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "conversation_id, group_id or channel_id required"})
+		return
 	}
 
 	if err := h.DB.Create(&msg).Error; err != nil {
@@ -300,20 +443,67 @@ func (h *MessageHandler) SendAttachment(c *gin.Context) {
 		return
 	}
 
-	// WS payload
+	// WebSocket уведомление
 	wsPayload := map[string]interface{}{
 		"type": "new_message",
 		"payload": map[string]interface{}{
 			"id":              msg.ID,
 			"conversation_id": msg.ConversationID,
+			"group_id":        msg.GroupID,
+			"channel_id":      msg.ChannelID,
 			"sender_id":       msg.SenderID,
 			"attachment_url":  msg.AttachmentURL,
 			"attachment_type": msg.AttachmentType,
+			"content":         msg.Content,
 			"created_at":      msg.CreatedAt,
 		},
 	}
 
-	h.broadcastToConversation(msg.ConversationID, wsPayload)
+	// Отправляем уведомление в зависимости от типа чата
+	if msg.ConversationID != nil {
+		h.broadcastToConversation(*msg.ConversationID, wsPayload)
+	} else if msg.GroupID != nil {
+		h.broadcastToGroup(*msg.GroupID, wsPayload)
+	} else if msg.ChannelID != nil {
+		h.broadcastToChannel(*msg.ChannelID, wsPayload)
+	}
 
 	c.JSON(http.StatusOK, msg)
+}
+
+// ДОБАВИТЬ недостающие broadcast методы
+func (h *MessageHandler) broadcastToGroup(groupID uint, payload interface{}) {
+	data, _ := json.Marshal(payload)
+	if h.Hub == nil {
+		return
+	}
+	var userIDs []uint
+	h.DB.Table("group_members").
+		Where("group_id = ?", groupID).
+		Pluck("user_id", &userIDs)
+
+	h.Hub.Broadcast <- ws.BroadcastMessage{
+		UserIDs: userIDs,
+		Data:    data,
+	}
+}
+
+func (h *MessageHandler) broadcastToChannel(channelID uint, payload interface{}) {
+	data, _ := json.Marshal(payload)
+	if h.Hub == nil {
+		return
+	}
+
+	var channel models.Channel
+	h.DB.First(&channel, channelID)
+
+	var userIDs []uint
+	h.DB.Table("server_members").
+		Where("server_id = ?", channel.ServerID).
+		Pluck("user_id", &userIDs)
+
+	h.Hub.Broadcast <- ws.BroadcastMessage{
+		UserIDs: userIDs,
+		Data:    data,
+	}
 }

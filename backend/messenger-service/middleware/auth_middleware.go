@@ -1,3 +1,4 @@
+// /backend/messenger-service/middleware/auth_middleware.go
 package middleware
 
 import (

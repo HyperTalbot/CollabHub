@@ -1,8 +1,10 @@
+// backend/messenger-service/handlers/channel_handler.go
 package handlers
 
 import (
 	"backend/messenger-service/models"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -61,14 +63,39 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 	c.JSON(http.StatusCreated, newChannel)
 }
 
-// GetServerChannels - Получить список каналов сервера
+// GetChannelsByServerID - Получить список каналов сервера
 func (h *ChannelHandler) GetChannelsByServerID(c *gin.Context) {
 	serverID := c.Param("server_id")
 
-	// TODO: Проверка, является ли пользователь участником сервера (access control)
+	// ДОБАВИТЬ ВАЛИДАЦИЮ
+	if serverID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "server_id is required"})
+		return
+	}
+
+	// Проверка, что serverID - число
+	_, err := strconv.ParseUint(serverID, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server_id format"})
+		return
+	}
+
+	// Проверка доступа пользователя к серверу
+	userID := c.GetUint("user_id")
+	var count int64
+	h.DB.Table("server_members").
+		Where("server_id = ? AND user_id = ?", serverID, userID).
+		Count(&count)
+
+	if count == 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied to this server"})
+		return
+	}
 
 	var channels []models.Channel
-	if err := h.DB.Where("server_id = ?", serverID).Find(&channels).Error; err != nil {
+	if err := h.DB.Where("server_id = ?", serverID).
+		Order("position ASC, created_at ASC").
+		Find(&channels).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch channels"})
 		return
 	}

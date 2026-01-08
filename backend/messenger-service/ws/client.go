@@ -2,7 +2,6 @@ package ws
 
 import (
 	"backend/messenger-service/models"
-	"backend/messenger-service/utils"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -57,6 +56,7 @@ func ServeWs(hub *Hub, db *gorm.DB, w http.ResponseWriter, r *http.Request, user
 type IncomingMessage struct {
 	ConversationID *uint  `json:"conversation_id"`
 	ChannelID      *uint  `json:"channel_id"`
+	GroupID        *uint  `json:"group_id"` // Добавили поддержку групп
 	Content        string `json:"content"`
 }
 
@@ -64,8 +64,10 @@ type OutgoingMessage struct {
 	ID             uint      `json:"id"`
 	ConversationID *uint     `json:"conversation_id,omitempty"`
 	ChannelID      *uint     `json:"channel_id,omitempty"`
+	GroupID        *uint     `json:"group_id,omitempty"`
 	SenderID       uint      `json:"sender_id"`
 	SenderUsername string    `json:"sender_username"`
+	SenderAvatar   string    `json:"sender_avatar"`
 	Content        string    `json:"content"`
 	CreatedAt      time.Time `json:"created_at"`
 }
@@ -95,49 +97,55 @@ func (c *Client) ReadPump() {
 			continue
 		}
 
-		if (msgReq.ConversationID == nil && msgReq.ChannelID == nil) || (msgReq.ConversationID != nil && msgReq.ChannelID != nil) {
-			continue
-		}
-
 		// --- ЛИЧНЫЕ ЧАТЫ ---
 		if msgReq.ConversationID != nil {
 			newMessage := models.Message{
-				ConversationID: *msgReq.ConversationID, // <--- ИСПРАВЛЕНО (разыменование)
+				ConversationID: msgReq.ConversationID, // Убрали *, так как это уже *uint
 				SenderID:       c.UserID,
 				Content:        msgReq.Content,
+				CreatedAt:      time.Now(),
 			}
+
 			if err := c.DB.Create(&newMessage).Error; err != nil {
 				log.Printf("DB Error: %v", err)
 				continue
 			}
 
-			// Обновляем last_message_id у самого чата
-			if err := c.DB.Model(&models.Conversation{}).
-				Where("id = ?", *msgReq.ConversationID).
-				Update("last_message_id", newMessage.ID).Error; err != nil {
-				log.Printf("Failed to update conversation last_message_id: %v", err)
-			}
-
+			// Обновляем курсор прочтения
 			c.DB.Model(&models.ConversationParticipant{}).
 				Where("conversation_id = ? AND user_id = ?", *msgReq.ConversationID, c.UserID).
 				Update("last_read_message_id", newMessage.ID)
 
-			username := utils.GetUsernameByID(c.UserID)
+			var sender models.User
+			c.DB.First(&sender, c.UserID)
 
-			// Подготовка ответа
 			outMsg := OutgoingMessage{
 				ID:             newMessage.ID,
-				ConversationID: &newMessage.ConversationID, // <--- ИСПРАВЛЕНО (берем адрес)
+				ConversationID: newMessage.ConversationID, // Убрали &, так как это уже *uint
 				SenderID:       newMessage.SenderID,
-				SenderUsername: username,
+				SenderUsername: sender.Username,
+				SenderAvatar:   sender.AvatarURL,
 				Content:        newMessage.Content,
 				CreatedAt:      newMessage.CreatedAt,
 			}
-			responseBytes, _ := json.Marshal(outMsg)
 
-			// Ищем участников и отправляем
+			// КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Формируем правильный WebSocket payload
+			wsPayload := map[string]interface{}{
+				"type": "new_message",
+				"payload": map[string]interface{}{
+					"id":              outMsg.ID,
+					"conversation_id": outMsg.ConversationID,
+					"sender_id":       outMsg.SenderID,
+					"sender_username": outMsg.SenderUsername,
+					"sender_avatar":   outMsg.SenderAvatar,
+					"content":         outMsg.Content,
+					"created_at":      outMsg.CreatedAt,
+				},
+			}
+
+			responseBytes, _ := json.Marshal(wsPayload)
+
 			var participants []models.User
-			// ВАЖНО: правильный JOIN для получения участников conversation
 			c.DB.Joins("JOIN conversation_participants cp ON cp.user_id = users.id").
 				Where("cp.conversation_id = ?", *msgReq.ConversationID).
 				Find(&participants)
@@ -147,50 +155,42 @@ func (c *Client) ReadPump() {
 			}
 		}
 
-		// --- КАНАЛЫ ---
-		if msgReq.ChannelID != nil {
-			// Находим канал
-			var channel models.Channel
-			if err := c.DB.First(&channel, *msgReq.ChannelID).Error; err != nil {
-				continue
-			}
-
-			// Проверка прав
-			var count int64
-			c.DB.Table("server_members").
-				Where("server_id = ? AND user_id = ?", channel.ServerID, c.UserID).
-				Count(&count)
-			if count == 0 {
-				continue
-			}
-
+		// --- ГРУППЫ ---
+		if msgReq.GroupID != nil {
 			newMessage := models.Message{
-				ChannelID: msgReq.ChannelID, // ChannelID в модели *uint, так что тут ок
+				GroupID:   msgReq.GroupID,
 				SenderID:  c.UserID,
 				Content:   msgReq.Content,
+				CreatedAt: time.Now(),
 			}
+
 			if err := c.DB.Create(&newMessage).Error; err != nil {
+				log.Printf("DB Error: %v", err)
 				continue
 			}
 
-			username := utils.GetUsernameByID(c.UserID)
-			outMsg := OutgoingMessage{
-				ID:             newMessage.ID,
-				ChannelID:      newMessage.ChannelID,
-				SenderID:       newMessage.SenderID,
-				SenderUsername: username,
-				Content:        newMessage.Content,
-				CreatedAt:      newMessage.CreatedAt,
+			var sender models.User
+			c.DB.First(&sender, c.UserID)
+
+			wsPayload := map[string]interface{}{
+				"type": "new_message",
+				"payload": map[string]interface{}{
+					"id":              newMessage.ID,
+					"group_id":        newMessage.GroupID,
+					"sender_id":       newMessage.SenderID,
+					"sender_username": sender.Username,
+					"sender_avatar":   sender.AvatarURL,
+					"content":         newMessage.Content,
+					"created_at":      newMessage.CreatedAt,
+				},
 			}
-			responseBytes, _ := json.Marshal(outMsg)
 
-			// Рассылка участникам сервера
-			var memberIDs []uint
-			c.DB.Table("server_members").
-				Where("server_id = ?", channel.ServerID).
-				Pluck("user_id", &memberIDs)
+			responseBytes, _ := json.Marshal(wsPayload)
 
-			for _, memberID := range memberIDs {
+			var members []uint
+			c.DB.Table("group_members").Where("group_id = ?", *msgReq.GroupID).Pluck("user_id", &members)
+
+			for _, memberID := range members {
 				c.Hub.SendToUser(memberID, responseBytes)
 			}
 		}
@@ -199,6 +199,7 @@ func (c *Client) ReadPump() {
 
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
+
 	defer func() {
 		ticker.Stop()
 		c.Conn.Close()

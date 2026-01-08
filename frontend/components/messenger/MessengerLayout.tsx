@@ -1,3 +1,4 @@
+// /components/messenger/MessengerLayout.tsx
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";

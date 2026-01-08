@@ -24,7 +24,7 @@ export const useChatWebSocket = () => {
     if (!token) return;
     if (socketRef.current?.readyState === WebSocket.OPEN) return;
 
-    const wsUrl = `ws://localhost:8082/ws?token=${token}`;
+    const wsUrl = `ws://localhost:8086/ws?token=${token}`;
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {

@@ -96,7 +96,7 @@ export default function Postogram() {
 
   //   try {
   //     // 3. Передаем заголовок явно вторым аргументом конфига
-  //     await axios.post('http://localhost:8082/api/v1/conversations', 
+  //     await axios.post('http://localhost:8086/api/v1/conversations', 
   //       { 
   //         target_user_id: targetUserId 
   //       },

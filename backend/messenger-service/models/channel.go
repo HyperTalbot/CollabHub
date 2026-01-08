@@ -1,3 +1,4 @@
+// backend/messenger-service/models/channel.go
 package models
 
 import (
@@ -23,7 +24,9 @@ type Channel struct {
 	// Связь с сообщениями (вместо ConversationID будет ChannelID)
 	// Messages []Message `gorm:"foreignKey:ChannelID"`
 
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt `gorm:"index"`
+	Server Server `gorm:"foreignKey:ServerID" json:"-"`
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }

@@ -181,7 +181,7 @@ export default function AppHeader({
 							<IconLink iconSrc="/icons/notes.svg" label="Заметки" />
               <IconLink iconSrc="/icons/heart.svg" label="Избранное" />
               <IconLink iconSrc="/icons/history.svg" label="История" />
-              <IconLink iconSrc="/icons/subscriptions.svg" label="Подписки" />
+              <IconLink iconSrc="/icons/heart.svg" label="Подписки" />
               <IconLink iconSrc="/icons/stars.svg" label="Наши звезды" />
 						</div>
 						
