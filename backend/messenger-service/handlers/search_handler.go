@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"backend/messenger-service/models"
+	"backend/messenger-service/utils"
 	"net/http"
 	"strings"
 
@@ -91,22 +92,58 @@ func (h *SearchHandler) SearchMessages(c *gin.Context) {
 	})
 }
 
-// SearchUsers - Поиск пользователей
-func (h *SearchHandler) SearchUsers(c *gin.Context) {
-	query := c.Query("q")
+// // SearchUsers - Поиск пользователей
+// func (h *SearchHandler) SearchUsers(c *gin.Context) {
+// 	query := c.Query("q")
 
-	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Query parameter required"})
+// 	if query == "" {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Query parameter required"})
+// 		return
+// 	}
+
+// 	var users []models.User
+// 	h.DB.Where("LOWER(username) LIKE ?", "%"+strings.ToLower(query)+"%").
+// 		Limit(20).
+// 		Find(&users)
+
+// 	c.JSON(http.StatusOK, gin.H{
+// 		"query": query,
+// 		"users": users,
+// 	})
+// }
+
+// SearchUsers - Поиск пользователей по username или display_name
+func (h *FriendHandler) SearchUsers(c *gin.Context) {
+	query := c.Query("q")
+	currentUserID := c.GetUint("user_id")
+
+	if query == "" || len(query) < 2 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Query too short (min 2 chars)"})
 		return
 	}
 
-	var users []models.User
-	h.DB.Where("LOWER(username) LIKE ?", "%"+strings.ToLower(query)+"%").
-		Limit(20).
-		Find(&users)
+	// Поиск через auth-service
+	users := utils.SearchUsers(query)
+
+	// Фильтруем текущего пользователя и добавляем статусы дружбы
+	var results []map[string]interface{}
+	for _, user := range users {
+		if user.ID != currentUserID {
+			friendStatus := h.getFriendshipStatus(currentUserID, user.ID)
+
+			results = append(results, map[string]interface{}{
+				"id":                user.ID,
+				"username":          user.Username,
+				"display_name":      user.DisplayName,
+				"avatar_url":        user.AvatarURL,
+				"friendship_status": friendStatus,
+			})
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"query": query,
-		"users": users,
+		"query":   query,
+		"results": results,
+		"count":   len(results),
 	})
 }

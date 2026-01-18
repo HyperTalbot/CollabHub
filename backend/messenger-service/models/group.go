@@ -32,10 +32,11 @@ type Group struct {
 
 // Таблица участников группы
 type GroupMember struct {
-	GroupID  uint      `gorm:"primaryKey" json:"group_id"`
-	UserID   uint      `gorm:"primaryKey" json:"user_id"`
-	Role     string    `gorm:"default:'member'" json:"role"` // 'owner', 'admin', 'member'
-	JoinedAt time.Time `json:"joined_at"`
+	GroupID           uint      `gorm:"primaryKey" json:"group_id"`
+	UserID            uint      `gorm:"primaryKey" json:"user_id"`
+	Role              string    `gorm:"default:'member'" json:"role"` // 'owner', 'admin', 'member'
+	JoinedAt          time.Time `json:"joined_at"`
+	LastReadMessageID uint      `gorm:"default:0" json:"last_read_message_id"` // ДОБАВЛЕНО
 
 	User User `gorm:"foreignKey:UserID" json:"user"`
 }

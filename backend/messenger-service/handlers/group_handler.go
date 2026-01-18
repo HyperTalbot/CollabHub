@@ -19,6 +19,7 @@ type GroupHandler struct {
 type CreateGroupInput struct {
 	Name           string `json:"name" binding:"required"`
 	Description    string `json:"description"`
+	AvatarURL      string `json:"avatar_url"` // ДОБАВЛЕНО
 	ParticipantIDs []uint `json:"participant_ids" `
 }
 
@@ -36,6 +37,7 @@ func (h *GroupHandler) CreateGroup(c *gin.Context) {
 	newGroup := models.Group{
 		Name:        input.Name,
 		Description: input.Description,
+		AvatarURL:   input.AvatarURL, // ДОБАВЛЕНО
 		OwnerID:     userID,
 		CreatedAt:   time.Now(),
 	}
@@ -227,4 +229,58 @@ func (h *GroupHandler) DeleteGroup(c *gin.Context) {
 	// чтобы она пропала из списка чатов в реальном времени.
 
 	c.JSON(http.StatusOK, gin.H{"status": "group deleted", "id": group.ID})
+}
+
+// MarkGroupAsRead - Пометить группу как прочитанную
+func (h *GroupHandler) MarkGroupAsRead(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	groupID := c.Param("id")
+
+	// Проверяем, является ли пользователь участником группы
+	var count int64
+	h.DB.Model(&models.GroupMember{}).
+		Where("group_id = ? AND user_id = ?", groupID, userID).
+		Count(&count)
+
+	if count == 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+
+	// Находим последнее сообщение в группе
+	var lastMsgs []models.Message
+	result := h.DB.Where("group_id = ?", groupID).
+		Order("created_at desc").
+		Limit(1).
+		Find(&lastMsgs)
+
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// Если сообщений нет, просто возвращаем успех
+	if len(lastMsgs) == 0 {
+		c.JSON(http.StatusOK, gin.H{"status": "no messages to mark"})
+		return
+	}
+
+	lastMsg := lastMsgs[0]
+
+	// Обновляем или создаём запись о прочтении
+	// Для групп можно использовать отдельную таблицу или поле в group_members
+	// Для простоты используем аналогичную логику с conversation_participants
+
+	// ВАРИАНТ 1: Если у вас есть поле last_read_message_id в group_members
+	if err := h.DB.Model(&models.GroupMember{}).
+		Where("group_id = ? AND user_id = ?", groupID, userID).
+		Update("last_read_message_id", lastMsg.ID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update read status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":               "updated",
+		"last_read_message_id": lastMsg.ID,
+	})
 }

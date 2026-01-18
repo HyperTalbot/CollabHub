@@ -2,6 +2,7 @@
 package models
 
 import (
+	"errors"
 	"time"
 
 	"github.com/lib/pq" // ВАЖНО
@@ -80,4 +81,12 @@ type PinnedMessage struct {
 	PinnedByUserID uint           `gorm:"not null" json:"pinned_by_user_id"`
 	PinnedAt       time.Time      `json:"pinned_at"`
 	DeletedAt      gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+func (m *Message) BeforeCreate(tx *gorm.DB) error {
+	// Проверяем, что хотя бы один ID заполнен
+	if m.ConversationID == nil && m.GroupID == nil && m.ChannelID == nil {
+		return errors.New("message must belong to conversation, group or channel")
+	}
+	return nil
 }

@@ -1,135 +1,3 @@
-// // /backend/messenger-service/main.go
-// package main
-
-// import (
-// 	"backend/messenger-service/db"
-// 	"backend/messenger-service/handlers"
-// 	"backend/messenger-service/middleware"
-// 	"backend/messenger-service/utils"
-// 	"backend/messenger-service/ws"
-// 	"log"
-// 	"net/http"
-// 	"time"
-
-// 	"github.com/gin-contrib/cors"
-// 	"github.com/gin-gonic/gin"
-// 	"github.com/joho/godotenv"
-// )
-
-// func main() {
-// 	err := godotenv.Load()
-// 	if err != nil {
-// 		log.Println("Error loading .env file")
-// 	}
-
-// 	db.InitDB()
-
-// 	// 1. Инициализация и запуск Hub
-// 	hub := ws.NewHub()
-// 	go hub.Run()
-
-// 	voiceState := ws.NewVoiceState()
-
-// 	// 2. Инициализация Хендлеров
-// 	conversationHandler := &handlers.ConversationHandler{DB: db.DB, Hub: hub}
-// 	groupHandler := &handlers.GroupHandler{DB: db.DB, Hub: hub}
-// 	serverHandler := &handlers.ServerHandler{DB: db.DB}
-// 	channelHandler := &handlers.ChannelHandler{DB: db.DB}
-// 	msgHandler := &handlers.MessageHandler{DB: db.DB, Hub: hub}
-// 	callHandler := &handlers.CallHandler{DB: db.DB, Hub: hub}
-// 	voiceChannelHandler := &handlers.VoiceChannelHandler{DB: db.DB, Hub: hub, VoiceState: voiceState}
-
-// 	r := gin.Default()
-
-// 	// CORS
-// 	r.Use(cors.New(cors.Config{
-// 		AllowOrigins:     []string{"http://localhost:3000"},
-// 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-// 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-// 		AllowCredentials: true,
-// 		MaxAge:           12 * time.Hour,
-// 	}))
-
-// 	// WebSocket Endpoint
-// 	r.GET("/ws", func(c *gin.Context) {
-// 		token := c.Query("token")
-// 		if token == "" {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token required"})
-// 			return
-// 		}
-// 		claims, err := utils.ParseToken(token)
-// 		if err != nil {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-// 			return
-// 		}
-// 		ws.ServeWs(hub, db.DB, c.Writer, c.Request, claims.UserID)
-// 	})
-
-// 	// === REST API ===
-// 	api := r.Group("/api/v1")
-// 	{
-// 		protected := api.Group("/")
-// 		protected.Use(middleware.AuthRequired())
-// 		{
-// 			// --- ЧАТЫ ---
-// 			protected.POST("/conversations", conversationHandler.StartChat)
-// 			protected.GET("/conversations", conversationHandler.GetConversations) // Используем единый метод
-// 			protected.GET("/conversations/:id/messages", conversationHandler.GetMessages)
-// 			protected.POST("/conversations/:id/read", conversationHandler.MarkConversationAsRead)
-
-// 			// --- СООБЩЕНИЯ (Исправлено api. -> protected.) ---
-// 			protected.PUT("/messages/:id", msgHandler.EditMessage)
-// 			protected.DELETE("/messages/:id", msgHandler.DeleteMessage)
-// 			protected.POST("/messages/:id/pin", msgHandler.PinMessage)
-// 			protected.POST("/messages/forward", msgHandler.ForwardMessage)
-// 			protected.POST("/messages/attachment", msgHandler.SendAttachment)
-
-// 			// Группы (отдельные эндпоинты)
-// 			protected.POST("/groups", groupHandler.CreateGroup)
-// 			protected.GET("/groups", groupHandler.GetGroups)
-// 			protected.GET("/groups/:id/messages", groupHandler.GetGroupMessages)
-// 			protected.PUT("/groups/:id", groupHandler.UpdateGroup)
-// 			protected.DELETE("/groups/:id", groupHandler.DeleteGroup)
-
-// 			// --- СЕРВЕРА ---
-// 			protected.POST("/servers", serverHandler.CreateServer)
-// 			protected.GET("/servers", serverHandler.GetServers)
-// 			protected.POST("/servers/join", serverHandler.JoinServer)
-// 			protected.PUT("/servers/:id", serverHandler.UpdateServer)
-// 			protected.POST("/servers/:id/leave", serverHandler.LeaveServer)
-// 			protected.DELETE("/servers/:id", serverHandler.DeleteServer)
-
-// 			// --- КАНАЛЫ ---
-// 			protected.POST("/channels", channelHandler.CreateChannel)
-// 			protected.GET("/servers/:server_id/channels", channelHandler.GetChannelsByServerID)
-// 			protected.DELETE("/channels/:id", channelHandler.DeleteChannel)
-
-// 			// --- ЗВОНКИ ---
-// 			protected.POST("/calls", callHandler.InitiateCall)
-// 			protected.POST("/calls/:id/answer", callHandler.AnswerCall)
-// 			protected.POST("/calls/:id/decline", callHandler.DeclineCall)
-// 			protected.POST("/calls/:id/end", callHandler.EndCall)
-// 			protected.POST("/calls/:id/ice", callHandler.ICECandidate)
-// 			protected.GET("/conversations/:conversation_id/calls", callHandler.GetCallHistory)
-
-// 			// --- ДЕМОНСТРАЦИЯ ЭКРАНА ---
-// 			protected.POST("/calls/:id/screen-share", callHandler.StartScreenShare)
-// 			protected.POST("/screen-shares/:id/stop", callHandler.StopScreenShare)
-
-// 			// --- ГОЛОСОВЫЕ КАНАЛЫ ---
-// 			protected.POST("/channels/:id/voice/join", voiceChannelHandler.JoinVoiceChannel)
-// 			protected.POST("/channels/:id/voice/leave", voiceChannelHandler.LeaveVoiceChannel)
-// 			protected.GET("/channels/:id/voice/participants", voiceChannelHandler.GetVoiceChannelParticipants)
-// 			protected.POST("/voice/signal", voiceChannelHandler.VoiceSignaling)
-// 		}
-// 	}
-
-// 	log.Println("Messenger Service running on :8086")
-// 	if err := r.Run(":8086"); err != nil {
-// 		log.Fatal("Failed to run server: ", err)
-// 	}
-// }
-
 // backend/messenger-service/main.go
 package main
 
@@ -178,6 +46,7 @@ func main() {
 	pollHandler := &handlers.PollHandler{DB: db.DB, Hub: hub}
 	notificationHandler := &handlers.NotificationHandler{DB: db.DB}
 	roleHandler := &handlers.RoleHandler{DB: db.DB}
+	friendHandler := &handlers.FriendHandler{DB: db.DB, Hub: hub}
 
 	r := gin.Default()
 
@@ -250,6 +119,7 @@ func main() {
 			protected.GET("/groups", groupHandler.GetGroups)
 			protected.GET("/groups/:id", groupHandler.GetGroupByID)
 			protected.GET("/groups/:id/messages", groupHandler.GetGroupMessages)
+			protected.POST("/groups/:id/read", groupHandler.MarkGroupAsRead) // ДОБАВЛЕНО
 			protected.PUT("/groups/:id", groupHandler.UpdateGroup)
 			protected.DELETE("/groups/:id", groupHandler.DeleteGroup)
 
@@ -297,7 +167,7 @@ func main() {
 
 			// --- ПОИСК ---
 			protected.GET("/search/messages", searchHandler.SearchMessages)
-			protected.GET("/search/users", searchHandler.SearchUsers)
+			// protected.GET("/search/users", searchHandler.SearchUsers)
 
 			// --- ЗАКРЕПЛЕННЫЕ СООБЩЕНИЯ ---
 			protected.POST("/pin", pinHandler.PinMessageToChat)
@@ -335,6 +205,15 @@ func main() {
 			protected.POST("/roles", roleHandler.CreateRole)
 			protected.POST("/roles/assign", roleHandler.AssignRole)
 			protected.GET("/servers/:id/roles", roleHandler.GetServerRoles)
+
+			// --- ДРУЗЬЯ ---
+			protected.GET("/users/search", friendHandler.SearchUsers)
+			protected.POST("/friends/request", friendHandler.SendFriendRequest)
+			protected.POST("/friends/accept/:id", friendHandler.AcceptFriendRequest)
+			protected.POST("/friends/reject/:id", friendHandler.RejectFriendRequest)
+			protected.DELETE("/friends/:friend_id", friendHandler.RemoveFriend)
+			protected.GET("/friends", friendHandler.GetFriends)
+			protected.GET("/friends/requests", friendHandler.GetFriendRequests)
 		}
 	}
 

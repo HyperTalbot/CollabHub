@@ -165,7 +165,7 @@ func (c *Client) ReadPump() {
 			}
 
 			if err := c.DB.Create(&newMessage).Error; err != nil {
-				log.Printf("DB Error: %v", err)
+				log.Printf("DB Error (Group): %v", err)
 				continue
 			}
 
