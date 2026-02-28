@@ -139,14 +139,15 @@ export default function AppHeader({
 				{panel1Visible ? (
 					// ВОССТАНОВЛЕНИЕ: py-2 и более крупные кнопки "X"
 					<div className="w-4/5 mx-auto bg-white shadow-lg rounded-full flex items-center py-2 transition-all dark:bg-gray-800 dark:border dark:border-gray-700"> 
-						<div className="flex-1 flex justify-center items-center space-x-0">
+						{/* TODO: добавить при наведении - платформа такая-то */}
+            <div className="flex-1 flex justify-center items-center space-x-0">
               <NavLink href="/doubleyou" iconSrc="/logo/doubleyou.svg" label="DoubleYou" />
               <NavLink href="/flip" iconSrc="/logo/flashcards.jpg" label="Flip" />
-              <NavLink href="/kvach" iconSrc="/logo/kvach.svg" label="Kvach" />
+              <NavLink href="/kvach" iconSrc="/logo/telescope.svg" label="Telescope" />
               <NavLink href="/homepage" iconSrc="/logo/home.svg" label="Home" />
               <NavLink href="/postogram" iconSrc="/logo/postogram.svg" label="Postogram" />
               <NavLink href="/symphonya" iconSrc="/logo/symphonya.svg" label="Symphonya" />
-              <NavLink href="/misable" iconSrc="/logo/misable.svg" label="Bubble" />
+              <NavLink href="/bubble" iconSrc="/logo/misable.svg" label="Bubble" />
 						</div>
 						<button
 							onClick={() => setPanel1Visible(false)}
@@ -182,7 +183,7 @@ export default function AppHeader({
               <IconLink iconSrc="/icons/heart.svg" label="Избранное" />
               <IconLink iconSrc="/icons/history.svg" label="История" />
               <IconLink iconSrc="/icons/heart.svg" label="Подписки" />
-              <IconLink iconSrc="/icons/stars.svg" label="Созвездия" />
+              {/* <IconLink iconSrc="/icons/stars.svg" label="Созвездия" /> */}
               <IconLink iconSrc="/icons/stars.svg" label="Наши звезды" />
 						</div>
 						

@@ -52,7 +52,7 @@ func main() {
 
 	// CORS
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost", "https://collabhub.cloudpub.ru"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -68,23 +68,30 @@ func main() {
 	// 	})
 	// })
 
-	// WebSocket Endpoint
+	// WebSocket Endpoint - ИСПРАВЛЕНО
 	r.GET("/ws", func(c *gin.Context) {
 		token := c.Query("token")
 		if token == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token required"})
+			// ИСПРАВЛЕНО: Возвращаем HTTP статус, а не JSON
+			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
+
 		claims, err := utils.ParseToken(token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			log.Printf("❌ Invalid WebSocket token: %v", err)
+			// ИСПРАВЛЕНО: Возвращаем HTTP статус, а не JSON
+			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
+
+		log.Printf("✅ WebSocket authentication successful: user_id=%d", claims.UserID)
+
 		ws.ServeWs(hub, db.DB, c.Writer, c.Request, claims.UserID)
 	})
 
 	// === REST API ===
-	api := r.Group("/api/v1")
+	api := r.Group("/api/v1/messenger")
 	{
 		// Публичные эндпоинты
 		api.POST("/invite/:code/join", inviteHandler.JoinByInvite)
@@ -232,7 +239,7 @@ func main() {
 	log.Println("   • Roles & Permissions")
 	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	log.Println("🌐 WebSocket: ws://localhost:8086/ws?token=YOUR_TOKEN")
-	log.Println("🔗 API: http://localhost:8086/api/v1")
+	log.Println("🔗 API: http://localhost:8086/api/v1/messenger")
 	// log.Println("💚 Health: http://localhost:8086/health")
 	log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 

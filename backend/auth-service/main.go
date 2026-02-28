@@ -32,7 +32,7 @@ func main() {
 	// Должно быть до регистрации роутов
 	r.Use(cors.New(cors.Config{
 		// Указываем к каким адресам (ориджинам) даем доступ
-		AllowOrigins: []string{"http://localhost:3000"},
+		AllowOrigins: []string{"http://localhost:3000", "http://localhost", "https://collabhub.cloudpub.ru"},
 
 		// Указываем метода HTTP
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},

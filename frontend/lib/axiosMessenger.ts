@@ -1,10 +1,11 @@
-// lib/axiosMessenger.ts
+// frontend/lib/axiosMessenger.ts
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
-// ВАЖНО: Порт 8086 для чат-сервиса
+const baseURL = process.env.NEXT_PUBLIC_MESSENGER_API_URL || '/api/v1/messenger';
+
 const axiosMessenger = axios.create({
-  baseURL: 'http://localhost:8086/api/v1', 
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },

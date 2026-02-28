@@ -15,9 +15,11 @@ interface ProfilePageProps {
 }
 
 // URL сервисов (без /api/v1, так как axiosInstance уже имеет baseURL, но тут мы обращаемся к разным портам)
-// ВАЖНО: axiosInstance настроен на 8081 (Post). Для Auth (8080) нужно указывать полный путь.
+// ВАЖНО: axiosInstance настроен на 8084 (Post). Для Auth (8080) нужно указывать полный путь.
 const AUTH_API_URL = 'http://localhost:8080/api/v1';
-const POST_API_URL = 'http://localhost:8081/api/v1';
+// const POST_API_URL = 'http://localhost:8084/api/v1';
+// const POST_API_URL = 'https://collabhub.cloudpub.ru/api/v1';
+const POST_API_URL = process.env.NEXT_PUBLIC_POSTS_API_URL;
 
 const ProfilePage = ({ userId }: ProfilePageProps) => {
   const { user: currentUser } = useAuth();
@@ -64,8 +66,8 @@ const ProfilePage = ({ userId }: ProfilePageProps) => {
               website: userRes.data.website || ''
           });
 
-          // 2. Посты (Post Service 8081)
-          // axiosInstance по дефолту стучится на 8081, можно писать просто '/posts'
+          // 2. Посты (Post Service 8084)
+          // axiosInstance по дефолту стучится на 8084, можно писать просто '/posts'
           // Но для надежности укажем полный путь
           try {
               const postsRes = await axios.get(`${POST_API_URL}/posts`);

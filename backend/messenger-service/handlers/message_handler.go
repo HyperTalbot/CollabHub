@@ -379,7 +379,7 @@ func (h *MessageHandler) SendAttachment(c *gin.Context) {
 
 	// Отправляем в media-service
 	token := c.GetHeader("Authorization")
-	req, err := http.NewRequest("POST", "http://localhost:8087/api/v1"+mediaEndpoint, &b)
+	req, err := http.NewRequest("POST", "http://localhost:8088/api/v1"+mediaEndpoint, &b)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
 		return

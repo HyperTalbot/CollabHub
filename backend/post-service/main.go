@@ -25,7 +25,7 @@ func main() {
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost", "https://collabhub.cloudpub.ru"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -44,7 +44,7 @@ func main() {
 			posts.POST("/", middlewares.AuthRequired(), postHandler.CreatePost)
 
 			// Получение одного поста по ID
-			posts.GET("/:id", postHandler.GetPostByID)
+			posts.GET("/:id", middlewares.AuthOptional(), postHandler.GetPostByID)
 
 			// :id это placeholder для ID поста
 			// лайк поста
@@ -88,10 +88,10 @@ func main() {
 		}
 	}
 
-	apiV1.POST("/uploads", middlewares.AuthRequired(), handlers.UploadImage)
+	// apiV1.POST("/uploads", middlewares.AuthRequired(), handlers.UploadImage)
 
-	log.Println("Starting Posts service on :8081")
-	if err := r.Run(":8081"); err != nil {
+	log.Println("Starting Posts service on :8084")
+	if err := r.Run(":8084"); err != nil {
 		log.Fatal("Failed to run server: ", err)
 	}
 }

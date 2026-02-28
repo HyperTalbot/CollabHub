@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # --- NGINX (Входная точка) ---
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80" # Открываем наружу только 80 порт (http)
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - auth-service
+      - messenger-service
+    networks:
+      - app-network
+
+  # --- DATABASE ---
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: collabhub
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    # Порт 5432 наружу можно не выставлять для безопасности, 
+    # но для удобства разработки оставим:
+    ports:
+      - "5432:5432" 
+
+  # --- FRONTEND (Next.js) ---
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      # Важно: внутри докера фронт не знает, что он за Nginx-ом, 
+      # но клиентский браузер будет стучаться на Nginx.
+      NEXT_PUBLIC_API_URL: /api/v1
+    networks:
+      - app-network
+
+  # --- BACKEND: AUTH ---
+  auth-service:
+    build: 
+      context: ./auth-service
+      dockerfile: Dockerfile
+    environment:
+      # Обрати внимание: хост БД теперь не localhost, а "postgres" (имя сервиса)
+      DATABASE_URL: "postgres://user:password@postgres:5432/collabhub?sslmode=disable"
+      PORT: 8080
+    networks:
+      - app-network
+
+  # --- BACKEND: MESSENGER ---
+  messenger-service:
+    build: 
+      context: ./messenger-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: "postgres://user:password@postgres:5432/collabhub?sslmode=disable"
+      PORT: 8086
+    networks:
+      - app-network
+
+# Общая сеть, чтобы контейнеры видели друг друга по имени
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

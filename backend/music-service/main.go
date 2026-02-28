@@ -54,7 +54,7 @@ func main() {
 	commentHandler := &handlers.CommentHandler{DB: db.DB}
 
 	// API routes
-	api := r.Group("/api/music")
+	api := r.Group("/api/v1/music")
 	{
 		// Треки
 		api.GET("/genres", trackHandler.GetGenres)

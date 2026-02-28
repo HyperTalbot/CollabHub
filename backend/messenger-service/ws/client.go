@@ -33,11 +33,15 @@ type Client struct {
 }
 
 func ServeWs(hub *Hub, db *gorm.DB, w http.ResponseWriter, r *http.Request, userID uint) {
+	log.Printf("🔌 WebSocket upgrade request from user_id=%d", userID)
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		log.Printf("❌ WebSocket upgrade failed for user_id=%d: %v", userID, err)
 		return
 	}
+
+	log.Printf("✅ WebSocket connected: user_id=%d", userID)
 
 	client := &Client{
 		Hub:    hub,

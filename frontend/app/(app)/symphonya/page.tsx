@@ -25,7 +25,8 @@ interface Playlist {
   tracks?: Track[];
 }
 
-const API_URL = 'http://localhost:8085/api/music';
+// const API_URL = 'http://localhost:8085/api/music';
+const API_URL = 'https://collabhub.cloudpub.ru/api/v1/music';
 
 const SongCard = ({ track, onPlay }: { track: Track; onPlay: () => void }) => (
   <div className="group cursor-pointer" onClick={onPlay}>

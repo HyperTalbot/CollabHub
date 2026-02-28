@@ -20,42 +20,6 @@ type FriendHandler struct {
 	Hub *ws.Hub
 }
 
-// // SearchUsers - Поиск пользователей по username или display_name
-// func (h *FriendHandler) SearchUsers(c *gin.Context) {
-// 	query := c.Query("q")
-// 	currentUserID := c.GetUint("user_id")
-
-// 	if query == "" || len(query) < 2 {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Query too short (min 2 chars)"})
-// 		return
-// 	}
-
-// 	// Поиск через auth-service
-// 	users := utils.SearchUsers(query)
-
-// 	// Фильтруем текущего пользователя и добавляем статусы дружбы
-// 	var results []map[string]interface{}
-// 	for _, user := range users {
-// 		if user.ID != currentUserID {
-// 			friendStatus := h.getFriendshipStatus(currentUserID, user.ID)
-
-// 			results = append(results, map[string]interface{}{
-// 				"id":                user.ID,
-// 				"username":          user.Username,
-// 				"display_name":      user.DisplayName,
-// 				"avatar_url":        user.AvatarURL,
-// 				"friendship_status": friendStatus,
-// 			})
-// 		}
-// 	}
-
-// 	c.JSON(http.StatusOK, gin.H{
-// 		"query":   query,
-// 		"results": results,
-// 		"count":   len(results),
-// 	})
-// }
-
 // SendFriendRequest - Отправить запрос в друзья
 func (h *FriendHandler) SendFriendRequest(c *gin.Context) {
 	userID := c.GetUint("user_id")
@@ -71,6 +35,13 @@ func (h *FriendHandler) SendFriendRequest(c *gin.Context) {
 
 	if userID == input.FriendID {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot add yourself"})
+		return
+	}
+
+	// ДОБАВЛЕНО: Проверяем что пользователь существует
+	friendData := utils.GetUserByID(input.FriendID)
+	if friendData.ID == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 
@@ -101,7 +72,10 @@ func (h *FriendHandler) SendFriendRequest(c *gin.Context) {
 	}
 
 	if err := h.DB.Create(&friendship).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send request"})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to send request",
+			"details": err.Error(), // Для отладки (уберите в проде)
+		})
 		return
 	}
 

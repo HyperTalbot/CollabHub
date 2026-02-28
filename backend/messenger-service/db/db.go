@@ -13,13 +13,25 @@ import (
 var DB *gorm.DB
 
 func InitDB() {
+	// УЛУЧШЕНО: Более детальное логирование
+	// newLogger := logger.New(
+	// 	log.New(os.Stdout, "\r\n", log.LstdFlags),
+	// 	logger.Config{
+	// 		LogLevel:                  logger.Info, // Показываем все SQL запросы
+	// 		IgnoreRecordNotFoundError: true,
+	// 		Colorful:                  true,
+	// 	},
+	// )
+
 	var err error
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Fatal("DATABASE_URL not set in .env file")
 	}
 
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		// Logger: newLogger,
+	})
 	if err != nil {
 		log.Fatal("Failed to connect to database: ", err)
 	}

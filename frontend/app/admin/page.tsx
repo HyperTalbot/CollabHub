@@ -9,8 +9,11 @@ import toast from 'react-hot-toast';
 import { useAuth } from '@/context/AuthContext';
 import { AccessDenied } from '@/components/admin/AccessDenied';
 
-const AUTH_API_URL = 'http://localhost:8080/api/v1';
-const POST_API_URL = 'http://localhost:8081/api/v1'; // Проверьте порт Post Service
+// const AUTH_API_URL = 'http://localhost:8080/api/v1';
+// const POST_API_URL = 'http://localhost:8081/api/v1'; // Проверьте порт Post Service
+
+const AUTH_API_URL = "https://collabhub.cloudpub.ru/api/v1";
+const POST_API_URL = 'https://collabhub.cloudpub.ru/api/v1/posts/';
 
 interface User {
     id: number;

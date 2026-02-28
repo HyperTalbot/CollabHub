@@ -22,7 +22,7 @@ func main() {
 
 	// CORS
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost", "https://collabhub.cloudpub.ru"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -50,8 +50,8 @@ func main() {
 		}
 	}
 
-	log.Println("Media Service running on :8087")
-	if err := r.Run(":8087"); err != nil {
+	log.Println("Media Service running on :8088")
+	if err := r.Run(":8088"); err != nil {
 		log.Fatal("Failed to run server: ", err)
 	}
 }

@@ -7,13 +7,14 @@ import { useAuth } from '@/context/AuthContext';
 import LikeButton from '@/components/shared/LikeButton';
 import ShareButton from '@/components/shared/ShareButton';
 import CommentSection from '@/components/comment/CommentSection';
-import { MessageCircle, User, UserRound } from 'lucide-react';
+import { MessageCircle, User, UserRound, Eye } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Cookies from "js-cookie";
 import toast from "react-hot-toast";
 import UserActionsDropdown from '@/components/user/UserActionDropdown';
 
-const POSTS_API_URL = 'http://localhost:8081/api/v1/posts/';
+// const POSTS_API_URL = 'http://localhost:8084/api/v1/posts/';
+const POSTS_API_URL = 'https://collabhub.cloudpub.ru/api/v1/posts/';
 
 // Тип для данных Поста (должен совпадать с Go-моделью)
 interface Post {
@@ -170,6 +171,9 @@ export default function Postogram() {
                   {/* --- ПАНЕЛЬ ДЕЙСТВИЙ (Футер) --- */}
                   <div className="flex justify-between items-center justify-center mt-4 pt-3 border-t">
                     <div className="flex space-x-6"> 
+
+                      {/* ПРОСМОТРЫ */}
+                      <Eye size={20}/><p>0</p>
                       
                       {/* КНОПКА ЛАЙКА */}
                       <LikeButton 

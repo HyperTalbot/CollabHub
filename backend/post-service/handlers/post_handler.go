@@ -185,7 +185,11 @@ func (h *PostHandler) GetPostByID(c *gin.Context) {
 	}
 
 	var post models.Post
-	if err := h.DB.First(&post, postID).Error; err != nil {
+
+	// ИСПРАВЛЕНО: Используем Take вместо First, чтобы не логировать record not found
+	err = h.DB.Take(&post, postID).Error
+
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
 		} else {
@@ -194,34 +198,10 @@ func (h *PostHandler) GetPostByID(c *gin.Context) {
 		return
 	}
 
-	// Читаем параметры пагинации
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	if limit > 50 {
-		limit = 50
-	}
-	offset := (page - 1) * limit
-
-	var comments []models.Comment
-	var total int64
-
-	// Считаем всего
-	h.DB.Model(&models.Comment{}).Where("post_id = ?", postID).Count(&total)
-
-	// Загружаем с лимитом
-	if err := h.DB.Where("post_id = ?", postID).
-		Order("created_at asc").
-		Limit(limit).
-		Offset(offset).
-		Find(&comments).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
-		return
-	}
-
-	// 2. Обогащаем пост (Вы забыли это сделать)
+	// 2. Обогащаем пост
 	post.UserUsername = utils.GetUsernameByID(post.UserID)
 
-	// 3. Считаем лайки (N+1, но для одного поста это нормально)
+	// 3. Считаем лайки
 	var likesCount int64
 	h.DB.Model(&models.Like{}).Where("post_id = ?", post.ID).Count(&likesCount)
 	post.LikesCount = likesCount
@@ -234,16 +214,13 @@ func (h *PostHandler) GetPostByID(c *gin.Context) {
 	// 5. Проверяем, лайкнул ли ЕГО пользователь
 	if userID > 0 {
 		var like models.Like
-		if h.DB.Where("post_id = ? AND user_id = ?", post.ID, userID).First(&like).Error == nil {
+		if h.DB.Where("post_id = ? AND user_id = ?", post.ID, userID).Take(&like).Error == nil {
 			post.IsLikedByMe = true
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data":  comments,
-		"total": total,
-		"page":  page,
-	})
+	// ИСПРАВЛЕНО: Возвращаем ПОСТ, а не комментарии
+	c.JSON(http.StatusOK, post)
 }
 
 func (h *PostHandler) LikePost(c *gin.Context) {

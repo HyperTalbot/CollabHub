@@ -1,35 +1,30 @@
-// /frontend/components/CreateContentModal.tsx
+// /frontend/components/create/CreateContentModal.tsx
 "use client";
 
-import React, { useState } from 'react';
-import { Video, Camera, Mic, Edit3, Music, Send, LucideIcon } from 'lucide-react';
-import CreatePostForm from '@/components/create/CreatePostForm'; // Мы переиспользуем эту форму
-import { CreationMode } from './CreateFanMenu'; // Импортируем тип
+import React from 'react';
+import CreatePostForm from '@/components/create/CreatePostForm';
+import { CreationMode } from './CreateFanMenu';
+import { LucideIcon } from 'lucide-react'
 
 interface CreateContentModalProps {
   mode: CreationMode | null;
   onClose: () => void;
-  onPostCreated: () => void; // Коллбэк для обновления ленты
+  onPostCreated: () => void;
 }
-
-// Тип для состояния, что мы создаем
-// type CreationMode = null | 'post' | 'video' | 'short' | 'stream' | 'music' | 'dm';
 
 export default function CreateContentModal({ mode, onClose, onPostCreated }: CreateContentModalProps) {
   if (!mode) return null;
 
-  // Определяем заголовок
   const title = {
-      video: 'Загрузить видео',
-      short: 'Создать короткое видео',
-      stream: 'Начать прямую трансляцию',
-      post: 'Создать новый пост',
-      music: 'Создать музыкальный трек',
-      dm: 'Написать личное сообщение',
-  }[mode] || 'Создать контент'; // Запасной вариант 
+    video: 'Загрузить видео',
+    short: 'Создать короткое видео',
+    stream: 'Начать прямую трансляцию',
+    post: 'Создать новый пост',
+    music: 'Создать музыкальный трек',
+    dm: 'Написать личное сообщение',
+  }[mode] ?? 'Создать контент';
 
   return (
-// Окно (z-50, ВЫШЕ хедера и ВЫШЕ оверлея)
     <div className="fixed inset-0 z-50 flex justify-center items-center p-4">
       <div 
         className="bg-white p-6 rounded-lg shadow-2xl max-w-lg w-full relative dark:bg-gray-800"
@@ -42,19 +37,17 @@ export default function CreateContentModal({ mode, onClose, onPostCreated }: Cre
           &times;
         </button>
         
-        <h2 className="text-xl font-bold mb-6 text-center text-black">{title}</h2>
+        <h2 className="text-xl font-bold mb-6 text-center text-black dark:text-white">
+          {title}
+        </h2>
 
         {mode === 'post' ? (
-          // 1. Форма создания поста
-          <CreatePostForm 
-            onPostCreated={() => {
-              onPostCreated(); // Вызываем коллбэк
-              onClose(); // Закрываем окно
-            }} 
+          <CreatePostForm
+            onPostCreated={onPostCreated}
+            onClose={onClose} // ✅ ИСПРАВЛЕНО: Передаем onClose
           />
         ) : (
-          // 2. Заглушки для остального
-          <p className="text-center text-black">
+          <p className="text-center text-black dark:text-gray-300">
             Здесь будет форма для создания "{mode}". Этот функционал в разработке.
           </p>
         )}

@@ -21,8 +21,8 @@ type Friendship struct {
 	FriendID uint             `gorm:"not null;index" json:"friend_id"`          // Кому отправили
 	Status   FriendshipStatus `gorm:"not null;default:'pending'" json:"status"` // pending, accepted, blocked
 
-	User   User `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	Friend User `gorm:"foreignKey:FriendID" json:"friend,omitempty"`
+	// User   User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	// Friend User `gorm:"foreignKey:FriendID" json:"friend,omitempty"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`

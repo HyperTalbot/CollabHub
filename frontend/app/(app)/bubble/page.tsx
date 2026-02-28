@@ -1,4 +1,4 @@
-// frontend/app/(app)/misable/page.tsx
+// frontend/app/(app)/bubble/page.tsx
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -20,7 +20,9 @@ import { Conversation, Message, Server, ViewMode, Group, ChatPreview } from '@/t
 import toast from 'react-hot-toast';
 import { FriendsPage } from '@/components/messenger/FriendsPage';
 
-const MESSENGER_API_URL = 'http://localhost:8086/api/v1';
+// const MESSENGER_API_URL = 'http://localhost:8086/api/v1';
+const MESSENGER_API_URL = 'https://collabhub.cloudpub.ru/api/v1/messenger';
+
 const MAX_MESSAGE_LENGTH = 4096;
 
 export default function MessengerPage() {

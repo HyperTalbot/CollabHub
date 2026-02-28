@@ -9,7 +9,8 @@ import { CommentType } from '@/components/comment/Comment';
 import { buildCommentTree } from '@/utils/commentTree';
 import CommentReply from '@/components/comment/CommentReply'; // Мы переиспользуем этот компонент!
 
-const COMMENTS_API_URL = 'http://localhost:8081/api/v1/comments';
+// const COMMENTS_API_URL = 'http://localhost:8084/api/v1/comments';
+const COMMENTS_API_URL = 'https://collabhub.cloudpub.ru/api/v1/comments';
 
 export default function CommentThreadPage() {
   const params = useParams(); 

@@ -2,7 +2,8 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
-const MEDIA_API_URL = 'http://localhost:8087/api/v1';
+// const MEDIA_API_URL = 'http://localhost:8088/api/v1';
+const MEDIA_API_URL = process.env.NEXT_PUBLIC_MEDIA_API_URL || '/api/v1/media';
 
 export const uploadFile = async (file: File, type: string = 'misc'): Promise<string> => {
     const token = Cookies.get('authToken') || localStorage.getItem('authToken');
@@ -12,7 +13,7 @@ export const uploadFile = async (file: File, type: string = 'misc'): Promise<str
     formData.append('file', file);
 
      // Добавляем ?type=avatar к URL
-    const response = await axios.post(`${MEDIA_API_URL}/upload?type=${type}`, formData, {
+     const response = await axios.post(`${MEDIA_API_URL}/upload/image`, formData, {
         headers: {
             'Content-Type': 'multipart/form-data',
             'Authorization': `Bearer ${token}`

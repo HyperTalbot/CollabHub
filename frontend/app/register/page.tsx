@@ -9,7 +9,8 @@ import { useRouter } from 'next/navigation';
 
 // Наш локальный адрес бэкенда. 
 // В продакшене это будет домен, например, process.env.NEXT_PUBLIC_API_URL
-const API_BASE_URL = 'http://localhost:8080/api/v1/auth/'; 
+// const API_BASE_URL = 'http://localhost:8080/api/v1/auth/'; 
+const API_BASE_URL = "https://collabhub.cloudpub.ru/api/v1/auth/"
 
 export default function RegisterPage() {
   const [username, setUsername] = useState('');
