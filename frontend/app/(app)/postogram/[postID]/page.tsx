@@ -18,6 +18,7 @@ import Image from "next/image";
 import toast from "react-hot-toast";
 import { getMediaURL } from '@/lib/mediaUtils';
 import { Eye } from 'lucide-react';
+import { useViewTracking } from '@/hooks/useViewTracking';
 
 // const POSTS_API_URL = 'http://localhost:8084/api/v1/posts';
 const POSTS_API_URL = 'https://collabhub.cloudpub.ru/api/v1/posts';
@@ -114,7 +115,29 @@ export default function PostDetailPage() {
       console.error("Failed to post comment:", err);
       toast.error("Ошибка при отправке комментария.");
     }
+
+    // trackInteraction('comment');
+    
   };
+
+  // // ДОБАВЬТЕ трекинг
+  // const { trackView, trackInteraction } = useViewTracking({
+  //   contentType: 'post',
+  //   contentId: post?.id || 0,
+  //   enabled: !!post,
+  // });
+
+  // // Трекаем просмотр при монтировании
+  // useEffect(() => {
+  //   if (post) {
+  //     const timer = setTimeout(() => {
+  //       trackView();
+  //     }, 5000); // Через 5 секунд
+
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [post]);
+
   return (
     <>
       <div className="max-w-3xl mx-auto bg-white p-6 shadow-xl rounded-xl dark:bg-gray-800">

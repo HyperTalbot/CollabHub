@@ -46,6 +46,9 @@ func main() {
 			// Получение одного поста по ID
 			posts.GET("/:id", middlewares.AuthOptional(), postHandler.GetPostByID)
 
+			// Получить посты по списку ID (для рекомендаций)
+			posts.GET("/by-ids", middlewares.AuthOptional(), postHandler.GetPostsByIDs)
+
 			// :id это placeholder для ID поста
 			// лайк поста
 			posts.POST("/:id/like", middlewares.AuthRequired(), postHandler.LikePost)

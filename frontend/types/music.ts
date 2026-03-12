@@ -1,3 +1,4 @@
+// frontend/types/music.ts
 export interface Track {
   id: number;
   title: string;
@@ -22,6 +23,16 @@ export interface Playlist {
   user_id: number;
   is_public: boolean;
   tracks?: Track[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Album {
+  id: number;
+  name: string;
+  description?: string;
+  cover_url: string;
+  artist_id: number;
   created_at?: string;
   updated_at?: string;
 }

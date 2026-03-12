@@ -12,16 +12,25 @@ type Track struct {
 	Title       string         `gorm:"not null" json:"title"`
 	Artist      string         `gorm:"not null" json:"artist"`
 	Album       string         `json:"album"`
+	Description string         `json:"description"`
 	Duration    int            `json:"duration"` // В секундах
 	CoverURL    string         `json:"cover_url"`
 	AudioURL    string         `gorm:"not null" json:"audio_url"`
 	Genre       string         `json:"genre"`
+	Lyrics      string         `gorm:"type:text" json:"lyrics"`
 	ReleaseYear int            `json:"release_year"`
+	UserID      uint           `gorm:"not null;index" json:"user_id"`
+	AlbumID     *uint          `gorm:"index" json:"album_id"`
 	PlayCount   int            `gorm:"default:0" json:"play_count"`
 	LikesCount  int            `gorm:"default:0" json:"likes_count"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+type Tag struct {
+	ID   uint   `gorm:"primaryKey" json:"id"`
+	Name string `gorm:"unique;not null" json:"name"`
 }
 
 type Playlist struct {

@@ -131,6 +131,17 @@ export default function AppHeader({
       }
   };
 
+  const refreshContent = () => {
+    const path = window.location.pathname;
+    
+    if (path.includes('/postogram')) {
+      window.location.reload();
+    } else if (path.includes('/symphonya')) {
+      window.location.reload();
+    }
+    // Добавьте другие страницы по мере необходимости
+  };
+
   return (
 		<>
 			<header className="fixed top-0 left-0 right-0 z-40 p-2 flex flex-col items-center space-y-2">
@@ -141,7 +152,7 @@ export default function AppHeader({
 					<div className="w-4/5 mx-auto bg-white shadow-lg rounded-full flex items-center py-2 transition-all dark:bg-gray-800 dark:border dark:border-gray-700"> 
 						{/* TODO: добавить при наведении - платформа такая-то */}
             <div className="flex-1 flex justify-center items-center space-x-0">
-              <NavLink href="/doubleyou" iconSrc="/logo/doubleyou.svg" label="DoubleYou" />
+              <NavLink href="/doubleyou" iconSrc="/logo/doubleyou.svg" label="NQB" />
               <NavLink href="/flip" iconSrc="/logo/flashcards.jpg" label="Flip" />
               <NavLink href="/kvach" iconSrc="/logo/telescope.svg" label="Telescope" />
               <NavLink href="/homepage" iconSrc="/logo/home.svg" label="Home" />
@@ -323,7 +334,7 @@ export default function AppHeader({
 			<CreateContentModal
 				mode={creationMode}
 				onClose={handleCloseAll}
-				onPostCreated={refreshPostogram}
+				onPostCreated={refreshContent}
 			/>
       <ThemeModal 
         isOpen={isThemeModalOpen}

@@ -4,6 +4,7 @@ import (
 	"backend/post-service/models"
 	"backend/post-service/utils"
 	"errors"
+	"strings"
 
 	"net/http"
 	"strconv"
@@ -221,6 +222,98 @@ func (h *PostHandler) GetPostByID(c *gin.Context) {
 
 	// ИСПРАВЛЕНО: Возвращаем ПОСТ, а не комментарии
 	c.JSON(http.StatusOK, post)
+}
+
+// GetPostsByIDs - Получить посты по списку ID (для рекомендаций)
+func (h *PostHandler) GetPostsByIDs(c *gin.Context) {
+	userID_interface, exists := c.Get("userID")
+	var userID uint
+	if exists {
+		switch v := userID_interface.(type) {
+		case uint:
+			userID = v
+		case float64:
+			userID = uint(v)
+		case int:
+			userID = uint(v)
+		case int64:
+			userID = uint(v)
+		}
+	}
+
+	// Получаем список ID из query параметра
+	idsParam := c.Query("ids") // "1,2,3,4,5"
+	if idsParam == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ids parameter required"})
+		return
+	}
+
+	// Парсим ID
+	idStrings := strings.Split(idsParam, ",")
+	postIDs := make([]uint, 0, len(idStrings))
+	for _, idStr := range idStrings {
+		id, err := strconv.ParseUint(strings.TrimSpace(idStr), 10, 32)
+		if err == nil {
+			postIDs = append(postIDs, uint(id))
+		}
+	}
+
+	if len(postIDs) == 0 {
+		c.JSON(http.StatusOK, []models.Post{})
+		return
+	}
+
+	// Загружаем посты
+	var posts []models.Post
+	if err := h.DB.Where("id IN ?", postIDs).Find(&posts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch posts"})
+		return
+	}
+
+	// Обогащаем постами
+	postsIDsMap := make(map[uint]int)
+	for i, post := range posts {
+		postsIDsMap[post.ID] = i
+	}
+
+	// Собираем ID всех постов
+	var likes []models.Like
+	h.DB.Where("post_id IN ?", postIDs).Find(&likes)
+
+	likesCountMap := make(map[uint]int64)
+	userLikesMap := make(map[uint]bool)
+
+	for _, like := range likes {
+		likesCountMap[like.PostID]++
+		if userID > 0 && like.UserID == userID {
+			userLikesMap[like.PostID] = true
+		}
+	}
+
+	var comments []models.Comment
+	h.DB.Where("post_id IN ?", postIDs).Find(&comments)
+
+	commentCountMap := make(map[uint]int64)
+	for _, comment := range comments {
+		commentCountMap[comment.PostID]++
+	}
+
+	for i := range posts {
+		posts[i].UserUsername = utils.GetUsernameByID(posts[i].UserID)
+		posts[i].LikesCount = likesCountMap[posts[i].ID]
+		posts[i].IsLikedByMe = userLikesMap[posts[i].ID]
+		posts[i].CommentsCount = commentCountMap[posts[i].ID]
+	}
+
+	// Сортируем в том же порядке, что и в postIDs
+	sortedPosts := make([]models.Post, 0, len(posts))
+	for _, id := range postIDs {
+		if idx, exists := postsIDsMap[id]; exists {
+			sortedPosts = append(sortedPosts, posts[idx])
+		}
+	}
+
+	c.JSON(http.StatusOK, sortedPosts)
 }
 
 func (h *PostHandler) LikePost(c *gin.Context) {

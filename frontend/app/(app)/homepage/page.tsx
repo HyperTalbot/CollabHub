@@ -1,93 +1,49 @@
-// /frontend/app/(app)/homepage/page.tsx
+// frontend/app/(app)/page.tsx
 "use client";
 
-import React, { useState, useEffect } from 'react';
-
-const POSTS_API_URL = 'http://localhost:8081/api/v1/posts/';
-
-// Тип для данных Поста (должен совпадать с Go-моделью)
-interface Post {
-  id: number;
-  user_id: number;
-  username: string;
-  title: string;
-  content: string;
-  created_at: string;
-  
-  // Добавленные поля для лайков
-  likes_count: number;
-  is_liked_by_me: boolean;
-
-  comments_count: number;
-}
-
-// const fetchPosts = async () => {
-//   try {
-//     // Включаем токен, если пользователь залогинен (это обрабатывается в axiosInstance)
-//     const response = await axios.get(POSTS_API_URL);
-//     return response.data || [];
-//   } catch (error) {
-//     console.error("Failed to fetch posts:", error);
-//     return [];
-//   }
-// };
+import { useRecommendations } from '@/hooks/useRecommendations';
+import PostCard from '@/components/PostCard';
+// import VideoCard from '@/components/VideoCard';
+import { useAuth } from '@/context/AuthContext';
 
 export default function HomePage() {
-  // const { user, isLoggedIn } = useAuth();
-  // const [posts, setPosts] = useState<Post[]>([]);
-  // const [loading, setLoading] = useState(true);
-  // const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
+  const { isLoggedIn } = useAuth();
+  const { recommendations, loading } = useRecommendations({
+    type: 'all',
+    limit: 20,
+  });
 
-  // const loadPosts = async () => {
-  //   setLoading(true);
-  //   const fetchedPosts = await fetchPosts();
-  //   setPosts(fetchedPosts);
-  //   setLoading(false);
-  // };
-  
-  // // Использование loadPosts в качестве колбэка
-  // const handlePostCreated = () => {
-  //   loadPosts(); 
-  // };
-
-  // useEffect(() => {
-  //   loadPosts();
-  // }, [isLoggedIn]); // Обновляем ленту при изменении статуса авторизации
-
-  // const toggleComments = (postId: number) => {
-  //   if (expandedPostId === postId) {
-  //     setExpandedPostId(null);
-  //   } else {
-  //     setExpandedPostId(postId);
-  //   }
-  // };
+  if (loading) {
+    return <div className="text-center py-10">Загрузка ленты...</div>;
+  }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-      хэштеги
-      
-      {/* --- ЛЕВАЯ КОЛОНКА (Выжимка контента) --- */}
-        {/* Заглушка под Видео (YouTube/TikTok) */}
-        <div className="bg-white p-4 shadow rounded-lg">
-          <h3 className="font-semibold mb-2 text-xl text-black">🎬 Видео дня</h3>
-          <div className="aspect-video bg-gray-200 rounded animate-pulse h-40"></div>
-          <p className="text-sm mt-2 text-gray-500">Заглушка для контента с YouTube/TikTok</p>
-        </div>
-        
-      {/* Заглушка под Музыку (Spotify) */}
-        <div className="bg-white p-4 shadow rounded-lg">
-          <h3 className="font-semibold mb-2 text-black">🎧 Музыка Недели</h3>
-          <div className="h-16 bg-gray-200 rounded animate-pulse"></div>
-        </div>
+    <div className="max-w-4xl mx-auto p-4">
+      <h1 className="text-3xl font-bold mb-6">
+        {isLoggedIn ? 'Для вас' : 'Популярное'}
+      </h1>
 
-        {/* Заглушка под Новости/Музыку */}
-        <div className="bg-white p-4 shadow rounded-lg">
-          <h3 className="font-semibold mb-2 text-xl text-black">📰 Горячие новости</h3>
-          <div className="h-16 bg-gray-200 rounded animate-pulse mb-2"></div>
-          <div className="h-16 bg-gray-200 rounded animate-pulse"></div>
-          <p className="text-sm mt-2 text-gray-500">Заглушка для интеграции Discord/Telegram</p>
-        </div>
-
+      <div className="space-y-6">
+        {recommendations.map((rec) => {
+          // Рендерим разные компоненты в зависимости от типа
+          switch (rec.content_type) {
+            case 'post':
+              return <PostCard key={`post-${rec.content_id}`} postId={rec.content_id} />;
+            
+            // case 'video':
+            //   return <VideoCard key={`video-${rec.content_id}`} videoId={rec.content_id} />;
+            
+            // case 'short':
+            //   return <ShortCard key={`short-${rec.content_id}`} shortId={rec.content_id} />;
+            
+            // case 'music':
+            //   return <MusicCard key={`music-${rec.content_id}`} trackId={rec.content_id} />;
+            
+            default:
+              return null;
+          }
+        })}
+      </div>
     </div>
   );
 }

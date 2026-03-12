@@ -8,8 +8,8 @@ import OriginalAxios from 'axios'; // Для проверки ошибок
 import axiosInstance from '@/lib/axiosInstance';
 import { Heart } from 'lucide-react';
 
-const POSTS_API_URL = 'http://localhost:8081/api/v1/posts';
-const COMMENTS_API_URL = 'http://localhost:8081/api/v1/comments';
+const POSTS_API_URL = 'http://localhost:8084/api/v1/posts';
+const COMMENTS_API_URL = 'http://localhost:8084/api/v1/comments';
 
 interface LikeButtonProps {
   id: number; // ID Поста или Комментария
@@ -97,76 +97,3 @@ export default function LikeButton({ initialLikesCount, initialIsLiked, id, type
     </>
   );
 }
-
-
-
-// // /frontend/components/shared/LikeButton.tsx
-// "use client";
-
-// import React, { useState } from 'react';
-// import axios from '@/lib/axiosInstance';
-// import { Heart } from 'lucide-react';
-// import { useAuth } from '@/context/AuthContext';
-
-// interface LikeButtonProps {
-//   id: number;
-//   type: 'post' | 'comment';
-//   initialIsLiked: boolean;
-//   initialLikesCount: number;
-//   onLikeSuccess?: () => void; // <-- 1. ДОБАВЬТЕ ЭТОТ ПРОПС
-// }
-
-// const API_URL = 'http://localhost:8081/api/v1';
-
-// export default function LikeButton({ id, type, initialIsLiked, initialLikesCount, onLikeSuccess }: LikeButtonProps) {
-//   const [isLiked, setIsLiked] = useState(initialIsLiked);
-//   const [likesCount, setLikesCount] = useState(initialLikesCount);
-//   const { isLoggedIn } = useAuth();
-
-//   const handleLike = async () => {
-//     if (!isLoggedIn) {
-//       alert("Необходимо войти в систему, чтобы ставить лайки.");
-//       return;
-//     }
-
-//     const endpoint = type === 'post' 
-//     ? `/posts/${id}/like `
-//     : `/comments/${id}/like`;
-    
-//     try {
-//       if (isLiked) {
-//         // Логика Dislike
-//         await axios.delete(`${API_URL}${endpoint}`);
-//         setIsLiked(false);
-//         setLikesCount(prev => prev - 1);
-//       } else {
-//         // Логика Like
-//         await axios.post(`${API_URL}${endpoint}`);
-//         setIsLiked(true);
-//         setLikesCount(prev => prev + 1);
-//       }
-      
-//       // 2. ВЫЗЫВАЕМ КОЛЛБЭК ПОСЛЕ УСПЕХА
-//       if (onLikeSuccess) {
-//         onLikeSuccess();
-//       }
-
-//     } catch (err) {
-//       console.error(`Failed to ${isLiked ? 'unlike' : 'like'}:`, err);
-//     }
-//   };
-
-//   return (
-//     <button
-//       onClick={handleLike}
-//       className={`flex items-center space-x-1 transition-colors ${
-//         isLiked
-//           ? 'text-red-500' // Цвет лайка
-//           : 'text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400'
-//       }`}
-//     >
-//       <Heart size={18} fill={isLiked ? 'currentColor' : 'none'} />
-//       <span className="text-sm">{likesCount}</span>
-//     </button>
-//   );
-// }

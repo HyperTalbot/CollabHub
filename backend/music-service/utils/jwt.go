@@ -12,7 +12,9 @@ import (
 // Удаляем глобальную переменную jwtKey, так как она инициализируется слишком рано!
 
 type Claims struct {
-	UserID uint `json:"user_id"`
+	UserID   uint   `json:"user_id"`
+	Username string `json:"username"` // УБЕДИТЕСЬ ЧТО ЭТО ПОЛЕ ЕСТЬ
+	Role     string `json:"role"`
 	jwt.RegisteredClaims
 }
 
