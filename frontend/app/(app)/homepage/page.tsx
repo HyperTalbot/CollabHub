@@ -2,7 +2,7 @@
 "use client";
 
 import { useRecommendations } from '@/hooks/useRecommendations';
-import PostCard from '@/components/PostCard';
+// import PostCard from '@/components/PostCard';
 // import VideoCard from '@/components/VideoCard';
 import { useAuth } from '@/context/AuthContext';
 
@@ -28,7 +28,7 @@ export default function HomePage() {
           // Рендерим разные компоненты в зависимости от типа
           switch (rec.content_type) {
             case 'post':
-              return <PostCard key={`post-${rec.content_id}`} postId={rec.content_id} />;
+              // return <PostCard key={`post-${rec.content_id}`} postId={rec.content_id} />;
             
             // case 'video':
             //   return <VideoCard key={`video-${rec.content_id}`} videoId={rec.content_id} />;

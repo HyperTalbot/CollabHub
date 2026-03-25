@@ -42,14 +42,24 @@ func InitDB() (*gorm.DB, error) {
 
 	// ДОБАВЛЕНО: Создаем таблицу для связи many-to-many
 	DB.Exec(`
-    CREATE TABLE IF NOT EXISTS track_tags (
-      track_id bigint NOT NULL,
-      tag_id bigint NOT NULL,
-      PRIMARY KEY (track_id, tag_id),
-      FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
-      FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
-    )
-  `)
+		CREATE TABLE IF NOT EXISTS track_tags (
+		track_id bigint NOT NULL,
+		tag_id bigint NOT NULL,
+		PRIMARY KEY (track_id, tag_id),
+		FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+		FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+		)
+  	`)
+
+	DB.Exec(`
+		CREATE TABLE IF NOT EXISTS playlist_tracks (
+		playlist_id bigint NOT NULL,
+		track_id bigint NOT NULL,
+		PRIMARY KEY (playlist_id, track_id),
+		FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+		FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+		)
+	`)
 
 	log.Println("✅ Music Database migrated successfully")
 	return DB, nil

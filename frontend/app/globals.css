@@ -256,3 +256,27 @@ body {
 .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(55, 65, 81, 0.7);
 }
+
+
+
+/* Зеленый прогресс бар для видео */
+video::-webkit-media-controls-timeline {
+  background-color: #10b981 !important;
+}
+
+video::-webkit-media-controls-current-time-display,
+video::-webkit-media-controls-time-remaining-display {
+  color: #10b981 !important;
+}
+
+video::-moz-range-progress {
+  background-color: #10b981 !important;
+}
+
+video::-webkit-media-controls-seek-back-button,
+video::-webkit-media-controls-seek-forward-button,
+video::-webkit-media-controls-rewind-button,
+video::-webkit-media-controls-return-to-realtime-button,
+video::-webkit-media-controls-toggle-closed-captions-button {
+  color: #10b981 !important;
+}

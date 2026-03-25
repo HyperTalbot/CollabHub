@@ -28,7 +28,7 @@ func (h *MediaHandler) UploadImage(c *gin.Context) {
 
 // UploadVideo - Загрузка видео
 func (h *MediaHandler) UploadVideo(c *gin.Context) {
-	h.uploadMedia(c, "video", []string{".mp4", ".avi", ".mov", ".mkv", ".webm"}, 100*1024*1024) // 100MB
+	h.uploadMedia(c, "video", []string{".mp4", ".avi", ".mov", ".mkv", ".webm"}, 500*1024*1024) // 500MB
 }
 
 // UploadAudio - Загрузка аудио

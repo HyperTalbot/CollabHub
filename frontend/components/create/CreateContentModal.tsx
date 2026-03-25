@@ -2,31 +2,71 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import CreatePostForm from './CreatePostForm';
-import CreateMusicModal from '@/components/create/CreateMusicModal';
+import MusicCreationTypeModal from '../music/MusicCreationTypeModal';
+import CreateTrackModal from '@/components/create/CreateTrackModal'; // Переименуйте CreateMusicModal
+import CreatePlaylistModal from '../music/CreatePlaylistModal';
+import UploadVideoModal from '../video/UploadVideoModal';
 
 export type CreationMode = 'post' | 'video' | 'short' | 'stream' | 'music' | 'dm';
 
 interface CreateContentModalProps {
   mode: CreationMode | null;
   onClose: () => void;
-  onPostCreated?: () => void; // ОСТАВЛЯЕМ ОПЦИОНАЛЬНЫМ
+  onPostCreated?: () => void;
 }
 
 export default function CreateContentModal({ mode, onClose, onPostCreated }: CreateContentModalProps) {
+  const [musicType, setMusicType] = useState<'track' | 'playlist' | null>(null);
+  const [videoType, setVideoType] = useState<'upload' | null>(null);
+
   if (!mode) return null;
 
-  // Для music
+  // Для music - показываем выбор типа
   if (mode === 'music') {
-    return (
-      <CreateMusicModal
-        isOpen={true}
-        onClose={onClose}
-        onTrackCreated={onPostCreated} // Передаем как есть (может быть undefined)
-      />
-    );
+    // Если тип не выбран - показываем окно выбора
+    if (!musicType) {
+      return (
+        <MusicCreationTypeModal
+          isOpen={true}
+          onSelectType={(type) => setMusicType(type)}
+          onClose={() => {
+            setMusicType(null);
+            onClose();
+          }}
+        />
+      );
+    }
+
+    // Если выбран трек
+    if (musicType === 'track') {
+      return (
+        <CreateTrackModal
+          isOpen={true}
+          onClose={() => {
+            setMusicType(null);
+            onClose();
+          }}
+          onTrackCreated={onPostCreated}
+        />
+      );
+    }
+
+    // Если выбран плейлист
+    if (musicType === 'playlist') {
+      return (
+        <CreatePlaylistModal
+          isOpen={true}
+          onClose={() => {
+            setMusicType(null);
+            onClose();
+          }}
+          onPlaylistCreated={onPostCreated}
+        />
+      );
+    }
   }
 
   // Для post
@@ -42,12 +82,23 @@ export default function CreateContentModal({ mode, onClose, onPostCreated }: Cre
           </div>
           <div className="p-4">
             <CreatePostForm 
-              onPostCreated={onPostCreated || (() => {})} // ИСПРАВЛЕНО: передаем пустую функцию если undefined
+              onPostCreated={onPostCreated || (() => {})}
               onClose={onClose} 
             />
           </div>
         </div>
       </div>
+    );
+  }
+
+  // Для video - показываем модалку загрузки:
+  if (mode === 'video') {
+    return (
+      <UploadVideoModal
+        isOpen={true}
+        onClose={onClose}
+        onVideoUploaded={onPostCreated}
+      />
     );
   }
 
@@ -57,7 +108,7 @@ export default function CreateContentModal({ mode, onClose, onPostCreated }: Cre
       <div className="bg-white dark:bg-gray-800 rounded-lg p-8 max-w-md mx-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold dark:text-white">
-            Создать {mode === 'video' ? 'видео' : mode === 'short' ? 'клип' : mode === 'stream' ? 'стрим' : 'сообщение'}
+            Создать {mode === 'short' ? 'клип' : mode === 'stream' ? 'стрим' : 'сообщение'}
           </h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
             <X size={24} />

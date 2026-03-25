@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import { uploadFile } from '@/services/uploadService'; // ИСПОЛЬЗУЕМ СУЩЕСТВУЮЩИЙ СЕРВИС
 import { getMediaURL } from '@/lib/mediaUtils'; // ИСПОЛЬЗУЕМ СУЩЕСТВУЮЩУЮ УТИЛИТУ
 
-interface CreateMusicModalProps {
+interface CreateTrackModalProps {
   isOpen: boolean;
   onClose: () => void;
   onTrackCreated?: () => void;
@@ -19,7 +19,7 @@ interface Album {
   cover_url: string;
 }
 
-export default function CreateMusicModal({ isOpen, onClose, onTrackCreated }: CreateMusicModalProps) {
+export default function CreateTrackModal({ isOpen, onClose, onTrackCreated }: CreateTrackModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [genre, setGenre] = useState('');

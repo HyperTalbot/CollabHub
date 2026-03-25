@@ -7,7 +7,7 @@ const MEDIA_API_URL = process.env.NEXT_PUBLIC_MEDIA_API_URL || '/api/v1/media';
 // Универсальная функция загрузки
 export const uploadFile = async (
   file: File, 
-  type: 'image' | 'audio' | 'video' | 'misc' = 'misc'
+  type: 'image' | 'audio' | 'video' | 'misc' | 'avatar' | 'cover' = 'misc' // ДОБАВЛЕНО avatar и cover
 ): Promise<string> => {
   const token = Cookies.get('authToken') || localStorage.getItem('authToken');
   if (!token) throw new Error("Необходимо войти в систему");
@@ -19,6 +19,8 @@ export const uploadFile = async (
   let endpoint = '';
   switch (type) {
     case 'image':
+    case 'avatar':  // ДОБАВЛЕНО - аватары это тоже изображения
+    case 'cover':   // ДОБАВЛЕНО - обложки это тоже изображения
       endpoint = `${MEDIA_API_URL}/upload/image`;
       break;
     case 'audio':

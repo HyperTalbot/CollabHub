@@ -1,132 +1,243 @@
+// frontend/app/(app)/shorts/page.tsx
 'use client';
 
-import Link from 'next/link';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Video as VideoIcon, Search, Upload, CheckCircle } from 'lucide-react';
+import VideoCard from '@/components/video/VideoCard';
+import UploadVideoModal from '@/components/video/UploadVideoModal';
+import type { Video } from '@/types/video';
 
-const VideoCard = ({ title, views, duration, channel }: any) => (
-  <div className="bg-white rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all cursor-pointer">
-    <div className="relative">
-      <div className="w-full h-48 bg-gradient-to-br from-red-400 to-pink-500 flex items-center justify-center text-white text-4xl">
-        ▶️
-      </div>
-      <span className="absolute bottom-2 right-2 bg-black/80 text-white px-2 py-1 rounded text-xs">
-        {duration}
-      </span>
-    </div>
-    <div className="p-4">
-      <h3 className="font-semibold text-gray-800 mb-2 line-clamp-2">{title}</h3>
-      <p className="text-sm text-gray-600">{channel}</p>
-      <p className="text-sm text-gray-500">{views} просмотров</p>
-    </div>
-  </div>
-);
+const API_URL = 'https://collabhub.cloudpub.ru/api/v1/video';
 
-export default function DoubleYouPage() {
-  const videos = [
-    { title: 'Как я построил дом за месяц', views: '1.2М', duration: '15:23', channel: 'Строитель Про' },
-    { title: 'Топ 10 мест для путешествий 2025', views: '856К', duration: '12:45', channel: 'Путешествуй' },
-    { title: 'Обзор новых технологий', views: '2.1М', duration: '20:15', channel: 'ТехноБлог' },
-    { title: 'Рецепт идеальной пасты', views: '634К', duration: '8:30', channel: 'Кухня Мастер' },
-    { title: 'Тренировка для начинающих', views: '945К', duration: '18:00', channel: 'Фитнес Гуру' },
-    { title: 'История одного стартапа', views: '512К', duration: '25:40', channel: 'Бизнес Истории' },
-    { title: 'Лайфхаки для дома', views: '1.5М', duration: '10:20', channel: 'Лайфхакер' },
-    { title: 'Обучение игре на гитаре', views: '728К', duration: '14:55', channel: 'Музыка для всех' },
-  ];
+const CATEGORIES = [
+  'Все',
+  'Музыка',
+  'Игры',
+  'Спорт',
+  'Образование',
+  'Новости',
+  'Развлечения',
+  'Наука и технологии',
+  'Путешествия',
+  'Блоги',
+];
+
+export default function ShortsPage() {
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState('Все');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [viewedVideoIds, setViewedVideoIds] = useState<Set<number>>(new Set()); // ДОБАВЛЕНО
+  
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const lastVideoRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    loadVideos(true);
+    loadViewHistory(); // ДОБАВЛЕНО
+  }, [selectedCategory]);
+
+  const loadVideos = async (reset = false) => {
+    if (loading) return;
+    
+    setLoading(true);
+    try {
+      const categoryParam = selectedCategory !== 'Все' ? `?category=${selectedCategory}` : '';
+      const response = await fetch(`${API_URL}/videos${categoryParam}`);
+      const data = await response.json();
+      
+      if (reset) {
+        setVideos(data || []);
+      } else {
+        setVideos(prev => [...prev, ...(data || [])]);
+      }
+      
+      setHasMore(data && data.length >= 12);
+    } catch (error) {
+      console.error('Failed to load videos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ДОБАВЛЕНО: Загрузка истории просмотров
+  const loadViewHistory = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/view-history`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+      setViewedVideoIds(new Set(data.video_ids || []));
+    } catch (error) {
+      console.error('Failed to load view history:', error);
+    }
+  };
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      loadVideos(true);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
+      const data = await response.json();
+      setVideos(data || []);
+      setHasMore(false);
+    } catch (error) {
+      console.error('Search failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const lastVideoElementRef = useCallback((node: HTMLDivElement) => {
+    if (loading) return;
+    if (observerRef.current) observerRef.current.disconnect();
+    
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore && !searchQuery) {
+        loadVideos(false);
+      }
+    });
+    
+    if (node) observerRef.current.observe(node);
+  }, [loading, hasMore, searchQuery]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white shadow-sm sticky top-0 z-50">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <Link href="/" className="text-2xl font-bold text-red-600">
-              DoubleYou
-            </Link>
-            <div className="flex-1 max-w-2xl">
-              <input
-                type="search"
-                placeholder="Поиск видео..."
-                className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-red-500"
-              />
+      <div className="sticky top-0 z-30 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div className="max-w-[1800px] mx-auto px-6 py-3">
+          <div className="flex items-center justify-between gap-4">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
+                <VideoIcon size={24} className="text-white" />
+              </div>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white hidden sm:block">
+                Shorts
+              </h1>
             </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <button className="p-2 hover:bg-gray-100 rounded-full">
-              📹
-            </button>
-            <button className="p-2 hover:bg-gray-100 rounded-full">
-              🔔
-            </button>
-            <button className="w-10 h-10 bg-gradient-to-br from-red-500 to-pink-500 rounded-full flex items-center justify-center text-white">
-              U
+
+            {/* Search */}
+            <div className="flex-1 max-w-2xl">
+              <div className="relative">
+                <input
+                  type="search"
+                  placeholder="Поиск видео..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="w-full px-4 py-2 pl-10 border border-gray-300 dark:border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              </div>
+            </div>
+
+            {/* Upload Button */}
+            <button
+              onClick={() => setIsUploadModalOpen(true)}
+              className="px-4 py-2 bg-green-600 text-white rounded-full hover:bg-green-700 transition flex items-center gap-2"
+            >
+              <Upload size={20} />
+              <span className="hidden sm:inline">Загрузить</span>
             </button>
           </div>
         </div>
-      </header>
 
-      <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 bg-white h-[calc(100vh-64px)] sticky top-16 p-4 space-y-2 overflow-y-auto">
-          <button className="w-full text-left px-4 py-3 hover:bg-gray-100 rounded-lg font-medium">
-            🏠 Главная
-          </button>
-          <button className="w-full text-left px-4 py-3 hover:bg-gray-100 rounded-lg">
-            🔥 В тренде
-          </button>
-          <button className="w-full text-left px-4 py-3 hover:bg-gray-100 rounded-lg">
-            📚 Подписки
-          </button>
-          <div className="border-t pt-4 mt-4">
-            <p className="px-4 text-sm font-semibold text-gray-600 mb-2">Категории</p>
-            <button className="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg text-sm">
-              🎮 Игры
-            </button>
-            <button className="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg text-sm">
-              🎵 Музыка
-            </button>
-            <button className="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg text-sm">
-              📰 Новости
-            </button>
-            <button className="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg text-sm">
-              ⚽ Спорт
-            </button>
-            <button className="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg text-sm">
-              🎓 Образование
-            </button>
-          </div>
-        </aside>
-
-        {/* Main Content */}
-        <main className="flex-1 p-6">
-          {/* Category Pills */}
-          <div className="flex gap-3 mb-6 overflow-x-auto pb-2">
-            <button className="px-4 py-2 bg-black text-white rounded-full text-sm whitespace-nowrap">
-              Все
-            </button>
-            <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-full text-sm whitespace-nowrap">
-              В прямом эфире
-            </button>
-            <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-full text-sm whitespace-nowrap">
-              Музыка
-            </button>
-            <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-full text-sm whitespace-nowrap">
-              Игры
-            </button>
-            <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-full text-sm whitespace-nowrap">
-              Новости
-            </button>
-            <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-full text-sm whitespace-nowrap">
-              Недавно загруженные
-            </button>
-          </div>
-
-          {/* Video Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {videos.map((video, index) => (
-              <VideoCard key={index} {...video} />
+        {/* Categories */}
+        <div className="max-w-[1800px] mx-auto px-6 py-2 overflow-x-auto scrollbar-hide">
+          <div className="flex gap-3">
+            {CATEGORIES.map((category) => (
+              <button
+                key={category}
+                onClick={() => setSelectedCategory(category)}
+                className={`px-4 py-1.5 rounded-lg whitespace-nowrap text-sm font-medium transition ${
+                  selectedCategory === category
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                }`}
+              >
+                {category}
+              </button>
             ))}
           </div>
-        </main>
+        </div>
       </div>
+
+      {/* Videos Grid */}
+      <div className="max-w-[1800px] mx-auto px-6 py-6">
+        {videos.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-x-4 gap-y-8">
+            {videos.map((video, index) => (
+              <div
+                key={video.id}
+                ref={index === videos.length - 1 ? lastVideoElementRef : null}
+                className="relative"
+              >
+                {/* ДОБАВЛЕНО: Индикатор просмотра */}
+                {viewedVideoIds.has(video.id) && (
+                  <div className="absolute top-2 left-2 z-10 bg-green-600 text-white px-2 py-1 rounded-full flex items-center gap-1 text-xs font-medium shadow-lg">
+                    <CheckCircle size={14} />
+                    Просмотрено
+                  </div>
+                )}
+                <VideoCard video={video} />
+              </div>
+            ))}
+          </div>
+        ) : loading ? (
+          <div className="text-center py-20">
+            <div className="inline-block w-12 h-12 border-4 border-gray-300 border-t-green-600 rounded-full animate-spin"></div>
+          </div>
+        ) : (
+          <div className="text-center py-20">
+            <VideoIcon size={64} className="mx-auto text-gray-400 mb-4" />
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+              Видео не найдены
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400">
+              {searchQuery ? 'Попробуйте изменить запрос' : 'Загрузите первое видео!'}
+            </p>
+          </div>
+        )}
+
+        {/* Loading More */}
+        {loading && videos.length > 0 && (
+          <div className="text-center py-8">
+            <div className="inline-block w-8 h-8 border-4 border-gray-300 border-t-green-600 rounded-full animate-spin"></div>
+          </div>
+        )}
+      </div>
+
+      {/* Upload Modal */}
+      <UploadVideoModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onVideoUploaded={() => {
+          loadVideos(true);
+          loadViewHistory(); // Обновляем историю
+        }}
+      />
+
+      <style jsx global>{`
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   );
 }

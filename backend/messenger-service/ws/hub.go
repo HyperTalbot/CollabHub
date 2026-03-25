@@ -37,9 +37,9 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.Register:
 			h.mu.Lock()
-			// Если старое соединение висит, закрываем его
+			// Если старое соединение висит, закрываем его безопасно
 			if oldClient, ok := h.Clients[client.UserID]; ok {
-				close(oldClient.Send)
+				h.safeClose(oldClient)
 			}
 			h.Clients[client.UserID] = client
 			h.mu.Unlock()
@@ -48,11 +48,10 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			if _, ok := h.Clients[client.UserID]; ok {
 				delete(h.Clients, client.UserID)
-				close(client.Send)
+				h.safeClose(client)
 			}
 			h.mu.Unlock()
 
-		// Обработка рассылки от MessageHandler
 		case msg := <-h.Broadcast:
 			h.mu.RLock()
 			for _, userID := range msg.UserIDs {
@@ -60,9 +59,15 @@ func (h *Hub) Run() {
 					select {
 					case client.Send <- msg.Data:
 					default:
-						// Буфер полон, пропускаем или отключаем
-						close(client.Send)
-						delete(h.Clients, userID)
+						// Буфер полон
+						h.mu.RUnlock()
+						h.mu.Lock()
+						if _, stillExists := h.Clients[userID]; stillExists {
+							delete(h.Clients, userID)
+							h.safeClose(client)
+						}
+						h.mu.Unlock()
+						h.mu.RLock()
 					}
 				}
 			}
@@ -71,7 +76,16 @@ func (h *Hub) Run() {
 	}
 }
 
-// SendToUser - вспомогательный метод (используется внутри client.go)
+// safeClose безопасно закрывает канал клиента
+func (h *Hub) safeClose(client *Client) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Канал уже закрыт, игнорируем панику
+		}
+	}()
+	close(client.Send)
+}
+
 func (h *Hub) SendToUser(userID uint, message []byte) {
 	h.mu.RLock()
 	client, ok := h.Clients[userID]
@@ -82,8 +96,10 @@ func (h *Hub) SendToUser(userID uint, message []byte) {
 		case client.Send <- message:
 		default:
 			h.mu.Lock()
-			delete(h.Clients, userID)
-			close(client.Send)
+			if _, stillExists := h.Clients[userID]; stillExists {
+				delete(h.Clients, userID)
+				h.safeClose(client)
+			}
 			h.mu.Unlock()
 		}
 	}

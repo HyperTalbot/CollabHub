@@ -25,13 +25,25 @@ func (h *PlaylistHandler) GetPlaylistByID(c *gin.Context) {
 	c.JSON(http.StatusOK, playlist)
 }
 
-// GetUserPlaylists - Получить плейлисты пользователя
-func (h *PlaylistHandler) GetUserPlaylists(c *gin.Context) {
-	userID, ok := getUserID(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+// GetPublicPlaylists - Получить все публичные плейлисты
+func (h *PlaylistHandler) GetPublicPlaylists(c *gin.Context) {
+	var playlists []models.Playlist
+
+	// Получаем только публичные плейлисты
+	if err := h.DB.Where("is_public = ?", true).
+		Preload("Tracks").
+		Order("created_at DESC").
+		Find(&playlists).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch playlists"})
 		return
 	}
+
+	c.JSON(http.StatusOK, playlists)
+}
+
+// GetUserPlaylists - Получить плейлисты пользователя
+func (h *PlaylistHandler) GetUserPlaylists(c *gin.Context) {
+	userID := c.GetUint("user_id")
 
 	var playlists []models.Playlist
 	h.DB.Where("user_id = ?", userID).
@@ -43,11 +55,7 @@ func (h *PlaylistHandler) GetUserPlaylists(c *gin.Context) {
 
 // CreatePlaylist - Создать новый плейлист
 func (h *PlaylistHandler) CreatePlaylist(c *gin.Context) {
-	userID, ok := getUserID(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
+	userID := c.GetUint("user_id")
 
 	var input struct {
 		Name        string `json:"name" binding:"required"`
@@ -80,11 +88,7 @@ func (h *PlaylistHandler) CreatePlaylist(c *gin.Context) {
 // UpdatePlaylist - Обновить плейлист
 func (h *PlaylistHandler) UpdatePlaylist(c *gin.Context) {
 	id := c.Param("id")
-	userID, ok := getUserID(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
+	userID := c.GetUint("user_id")
 
 	var playlist models.Playlist
 	if err := h.DB.First(&playlist, id).Error; err != nil {
@@ -134,11 +138,7 @@ func (h *PlaylistHandler) UpdatePlaylist(c *gin.Context) {
 // DeletePlaylist - Удалить плейлист
 func (h *PlaylistHandler) DeletePlaylist(c *gin.Context) {
 	id := c.Param("id")
-	userID, ok := getUserID(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
+	userID := c.GetUint("user_id")
 
 	var playlist models.Playlist
 	if err := h.DB.First(&playlist, id).Error; err != nil {
@@ -162,11 +162,7 @@ func (h *PlaylistHandler) DeletePlaylist(c *gin.Context) {
 // AddTrackToPlaylist - Добавить трек в плейлист
 func (h *PlaylistHandler) AddTrackToPlaylist(c *gin.Context) {
 	playlistID := c.Param("id")
-	userID, ok := getUserID(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
+	userID := c.GetUint("user_id")
 
 	var input struct {
 		TrackID uint `json:"track_id" binding:"required"`
@@ -206,11 +202,7 @@ func (h *PlaylistHandler) AddTrackToPlaylist(c *gin.Context) {
 func (h *PlaylistHandler) RemoveTrackFromPlaylist(c *gin.Context) {
 	playlistID := c.Param("id")
 	trackID := c.Param("trackId")
-	userID, ok := getUserID(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
+	userID := c.GetUint("user_id")
 
 	var playlist models.Playlist
 	if err := h.DB.First(&playlist, playlistID).Error; err != nil {

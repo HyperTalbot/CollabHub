@@ -55,42 +55,41 @@ func main() {
 	// API routes
 	api := r.Group("/api/v1/music")
 	{
-		// Защищенные endpoints
-		protected := api.Group("/")
-		protected.Use(middleware.AuthRequired())
-		{
-			protected.POST("/tracks", trackHandler.CreateTrack)
-			protected.POST("/tracks/:id/play", trackHandler.IncrementPlayCount)
-		}
-
-		// Публичные endpoints
-
-		// Треки
+		// Публичные endpoints (без авторизации)
 		api.GET("/genres", trackHandler.GetGenres)
 		api.GET("/quick-picks", trackHandler.GetQuickPicks)
 		api.GET("/recommended", trackHandler.GetRecommendedTracks)
 		api.GET("/tracks", trackHandler.GetTracks)
 		api.GET("/tracks/:id", trackHandler.GetTrackByID)
 		api.GET("/tracks/:id/similar", trackHandler.GetSimilarTracks)
-		// api.POST("/tracks/:id/play", trackHandler.IncrementPlayCount)
-		api.POST("/tracks/:id/like", trackHandler.LikeTrack)
-		api.DELETE("/tracks/:id/like", trackHandler.UnlikeTrack)
 		api.GET("/search", trackHandler.SearchTracks)
-
-		// Плейлисты
 		api.GET("/playlists/recommended", trackHandler.GetRecommendedPlaylists)
+		api.GET("/playlists/public", playlistHandler.GetPublicPlaylists) // ДОБАВЛЕНО
 		api.GET("/playlists/:id", playlistHandler.GetPlaylistByID)
-		api.GET("/playlists", playlistHandler.GetUserPlaylists)
-		api.POST("/playlists", playlistHandler.CreatePlaylist)
-		api.PUT("/playlists/:id", playlistHandler.UpdatePlaylist)
-		api.DELETE("/playlists/:id", playlistHandler.DeletePlaylist)
-		api.POST("/playlists/:id/tracks", playlistHandler.AddTrackToPlaylist)
-		api.DELETE("/playlists/:id/tracks/:trackId", playlistHandler.RemoveTrackFromPlaylist)
-
-		// Комментарии
 		api.GET("/tracks/:id/comments", commentHandler.GetComments)
-		api.POST("/tracks/:id/comments", commentHandler.CreateComment)
-		api.DELETE("/comments/:id", commentHandler.DeleteComment)
+
+		// Защищенные endpoints (требуют авторизации)
+		protected := api.Group("/")
+		protected.Use(middleware.AuthRequired())
+		{
+			// Треки
+			protected.POST("/tracks", trackHandler.CreateTrack)
+			protected.POST("/tracks/:id/play", trackHandler.IncrementPlayCount)
+			protected.POST("/tracks/:id/like", trackHandler.LikeTrack)
+			protected.DELETE("/tracks/:id/like", trackHandler.UnlikeTrack)
+
+			// Плейлисты
+			protected.GET("/playlists", playlistHandler.GetUserPlaylists) // Плейлисты текущего пользователя
+			protected.POST("/playlists", playlistHandler.CreatePlaylist)
+			protected.PUT("/playlists/:id", playlistHandler.UpdatePlaylist)
+			protected.DELETE("/playlists/:id", playlistHandler.DeletePlaylist)
+			protected.POST("/playlists/:id/tracks", playlistHandler.AddTrackToPlaylist)
+			protected.DELETE("/playlists/:id/tracks/:trackId", playlistHandler.RemoveTrackFromPlaylist)
+
+			// Комментарии
+			protected.POST("/tracks/:id/comments", commentHandler.CreateComment)
+			protected.DELETE("/comments/:id", commentHandler.DeleteComment)
+		}
 	}
 
 	// Запуск сервера
