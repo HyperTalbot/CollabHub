@@ -174,7 +174,6 @@ export default function PostDetailPage() {
                 }
               </p>
             </div>
-          </div>
 
           {/* Меню действий */}
           {isLoggedIn && user && String(post.user_id) !== String(user.id) && (
@@ -183,6 +182,7 @@ export default function PostDetailPage() {
               username={post.user_username}
             />
           )}
+          </div>
 
           <h1 className="text-2xl font-extrabold text-black text-center mb-2 dark:text-white">
             {post.title}
