@@ -1,4 +1,4 @@
-// /frontend/app/(app)/postogram/[postID]/page.tsx
+// frontend/app/(app)/postogram/[postID]/page.tsx
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -119,24 +119,6 @@ export default function PostDetailPage() {
     // trackInteraction('comment');
     
   };
-
-  // // ДОБАВЬТЕ трекинг
-  // const { trackView, trackInteraction } = useViewTracking({
-  //   contentType: 'post',
-  //   contentId: post?.id || 0,
-  //   enabled: !!post,
-  // });
-
-  // // Трекаем просмотр при монтировании
-  // useEffect(() => {
-  //   if (post) {
-  //     const timer = setTimeout(() => {
-  //       trackView();
-  //     }, 5000); // Через 5 секунд
-
-  //     return () => clearTimeout(timer);
-  //   }
-  // }, [post]);
 
   return (
     <>

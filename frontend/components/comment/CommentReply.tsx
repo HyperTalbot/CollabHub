@@ -79,7 +79,7 @@ export default function CommentReply({ comment, postID, onReplyClick, activeRepl
             className="flex items-center text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 mt-3 transition-colors font-medium"
           >
             <ChevronDown size={16} className="mr-1" />
-            Показать остальные ответы ({totalReplies - repliesToShow} / {totalReplies})
+            Показать ещё ({totalReplies - repliesToShow} / {totalReplies})
           </button>
         )}
       </div>
