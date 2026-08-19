@@ -1,12 +1,11 @@
 // frontend/components/create/CreateContentModal.tsx
-
 "use client";
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import CreatePostForm from './CreatePostForm';
 import MusicCreationTypeModal from '../music/MusicCreationTypeModal';
-import CreateTrackModal from '@/components/create/CreateTrackModal'; // Переименуйте CreateMusicModal
+import CreateTrackModal from '@/components/create/CreateTrackModal';
 import CreatePlaylistModal from '../music/CreatePlaylistModal';
 import UploadVideoModal from '../video/UploadVideoModal';
 
@@ -22,11 +21,15 @@ export default function CreateContentModal({ mode, onClose, onPostCreated }: Cre
   const [musicType, setMusicType] = useState<'track' | 'playlist' | null>(null);
   const [videoType, setVideoType] = useState<'upload' | null>(null);
 
+  // ИСПРАВЛЕНО (п.3): guard формы поста храним в REF, а не через setState-регистрацию.
+  // Форма сама запишет сюда свою функцию "запросить закрытие (с черновиком)",
+  // а крестик её прочитает в момент КЛИКА (событие), а не во время рендера.
+  const postGuardRef = useRef<(() => void) | null>(null);
+
   if (!mode) return null;
 
   // Для music - показываем выбор типа
   if (mode === 'music') {
-    // Если тип не выбран - показываем окно выбора
     if (!musicType) {
       return (
         <MusicCreationTypeModal
@@ -39,8 +42,6 @@ export default function CreateContentModal({ mode, onClose, onPostCreated }: Cre
         />
       );
     }
-
-    // Если выбран трек
     if (musicType === 'track') {
       return (
         <CreateTrackModal
@@ -53,8 +54,6 @@ export default function CreateContentModal({ mode, onClose, onPostCreated }: Cre
         />
       );
     }
-
-    // Если выбран плейлист
     if (musicType === 'playlist') {
       return (
         <CreatePlaylistModal
@@ -76,14 +75,23 @@ export default function CreateContentModal({ mode, onClose, onPostCreated }: Cre
         <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
             <h2 className="text-xl font-bold dark:text-white">Создать пост</h2>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
+            {/* ИСПРАВЛЕНО: крестик идёт через guard из ref (предупреждение о черновике).
+                Вызов происходит в обработчике клика — НЕ во время рендера. */}
+            <button
+              onClick={() => {
+                if (postGuardRef.current) postGuardRef.current();
+                else onClose();
+              }}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"
+            >
               <X size={24} />
             </button>
           </div>
           <div className="p-4">
-            <CreatePostForm 
+            <CreatePostForm
               onPostCreated={onPostCreated || (() => {})}
-              onClose={onClose} 
+              onClose={onClose}
+              guardRef={postGuardRef}
             />
           </div>
         </div>

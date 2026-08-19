@@ -24,25 +24,28 @@ func NewPostHandler(db *gorm.DB) *PostHandler {
 
 // Структура для входящих данных при создании поста
 type CreatePostInput struct {
-	Title    string `json:"title" binding:"required,min=3"`
-	Content  string `json:"content" binding:"required,min=5"`
-	ImageURL string `json:"image_url,omitempty"`
+	Title     string   `json:"title" binding:"required,min=3"`
+	Content   string   `json:"content"` // без жёсткого binding: текст ИЛИ картинки
+	ImageURL  string   `json:"image_url,omitempty"`
+	ImageURLs []string `json:"image_urls,omitempty"` // НОВОЕ: картинки карусели (стиль reddit)
+	PostStyle string   `json:"post_style,omitempty"` // НОВОЕ: 'reddit' | 'article'
 }
 
 // Создает новый пост в БД
 func (h *PostHandler) CreatePost(c *gin.Context) {
-	// ... получение claims из токена ...
-	// Представим, что вы достали userID, username и avatarUrl из Middleware
-	// Или, если в токене нет аватарки, вам придется сделать запрос в Auth Service,
-	// но для MVP лучше добавить avatar_url в Claims токена (в auth-service).
-
-	// ВНИМАНИЕ: Убедитесь, что ваш AuthMiddleware кладет username и avatar_url в контекст
 	username := c.GetString("username")
-	avatarUrl := c.GetString("avatar_url") // Если этого нет, передавайте с фронта или добавьте в JWT
+	avatarUrl := c.GetString("avatar_url")
 
 	var input CreatePostInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len([]rune(strings.TrimSpace(input.Content))) < 5 &&
+		len(input.ImageURLs) == 0 &&
+		strings.TrimSpace(input.ImageURL) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Добавьте текст (минимум 5 символов) или хотя бы одно изображение"})
 		return
 	}
 
@@ -61,11 +64,19 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		return
 	}
 
+	// Валидация стиля поста
+	postStyle := input.PostStyle
+	if postStyle != "reddit" && postStyle != "article" {
+		postStyle = "article"
+	}
+
 	post := models.Post{
 		UserID:          userID,
 		Title:           input.Title,
 		Content:         input.Content,
 		ImageURL:        input.ImageURL,
+		ImageURLs:       models.StringArray(input.ImageURLs), // НОВОЕ
+		PostStyle:       postStyle,                           // НОВОЕ
 		UserUsername:    username,
 		AuthorAvatarUrl: avatarUrl,
 	}
@@ -74,8 +85,7 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create post"})
 		return
 	}
-
-	h.DB.Create(post)
+	// ИСПРАВЛЕНО: убран повторный h.DB.Create(post) — пост создавался дважды
 	c.JSON(http.StatusCreated, post)
 }
 
@@ -98,13 +108,29 @@ func (h *PostHandler) GetPosts(c *gin.Context) {
 			userID = uint(v)
 		}
 	}
-	// userID := userID_interface.(uint)
 	// Если пользователь не залогинен, userID останется uint(0)
 
 	var posts []models.Post
+	query := h.DB.Order("created_at desc")
 
-	// Находим все посты
-	if err := h.DB.Order("created_at desc").Find(&posts).Error; err != nil {
+	// НОВОЕ: пагинация пачками (limit/offset из query-параметров).
+	// Без параметров — прежнее поведение (все посты).
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
+			if limit > 100 {
+				limit = 100
+			}
+			query = query.Limit(limit)
+		}
+	}
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		if offset, err := strconv.Atoi(offsetStr); err == nil && offset >= 0 {
+			query = query.Offset(offset)
+		}
+	}
+
+	// СНАЧАЛА выполняем запрос, и только ПОТОМ проверяем пустоту
+	if err := query.Find(&posts).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve posts"})
 		return
 	}
@@ -123,7 +149,6 @@ func (h *PostHandler) GetPosts(c *gin.Context) {
 
 	// Находим ВСЕ лайки для ЭТИХ постов (один запрос к БД)
 	var likes []models.Like
-
 	h.DB.Where("post_id IN ?", postsIDs).Find(&likes)
 
 	// Создаем maps ("карты") для быстрого подсчета
@@ -132,11 +157,8 @@ func (h *PostHandler) GetPosts(c *gin.Context) {
 
 	// Подсчет комментов
 	var comments []models.Comment
-
 	h.DB.Where("post_id IN ?", postsIDs).Find(&comments)
-
 	commentCountMap := make(map[uint]int64)
-
 	for _, comment := range comments {
 		commentCountMap[comment.PostID]++
 	}
@@ -144,7 +166,6 @@ func (h *PostHandler) GetPosts(c *gin.Context) {
 	for _, like := range likes {
 		// Увеличиваем общий счетчик
 		likesCountMap[like.PostID]++
-
 		// Если ID лайка совпадает с ID нашего пользователя
 		if userID > 0 && like.UserID == userID {
 			userLikesMap[like.PostID] = true
@@ -152,8 +173,12 @@ func (h *PostHandler) GetPosts(c *gin.Context) {
 	}
 
 	// Обогащаем наши посты данными из карт
+	// (один HTTP-запрос к auth-service вместо двух: имя + аватар сразу)
 	for i := range posts {
-		posts[i].UserUsername = utils.GetUsernameByID(posts[i].UserID)
+		if u := utils.GetUserByID(posts[i].UserID); u != nil {
+			posts[i].UserUsername = u.Username
+			posts[i].UserAvatarUrl = u.AvatarUrl // НОВОЕ: аватар в ленту
+		}
 		posts[i].LikesCount = likesCountMap[posts[i].ID]
 		posts[i].IsLikedByMe = userLikesMap[posts[i].ID]
 		posts[i].CommentsCount = commentCountMap[posts[i].ID]
@@ -200,7 +225,11 @@ func (h *PostHandler) GetPostByID(c *gin.Context) {
 	}
 
 	// 2. Обогащаем пост
-	post.UserUsername = utils.GetUsernameByID(post.UserID)
+	// post.UserUsername = utils.GetUsernameByID(post.UserID)
+	if u := utils.GetUserByID(post.UserID); u != nil {
+		post.UserUsername = u.Username
+		post.UserAvatarUrl = u.AvatarUrl // НОВОЕ: аватар автора поста
+	}
 
 	// 3. Считаем лайки
 	var likesCount int64
@@ -214,10 +243,9 @@ func (h *PostHandler) GetPostByID(c *gin.Context) {
 
 	// 5. Проверяем, лайкнул ли ЕГО пользователь
 	if userID > 0 {
-		var like models.Like
-		if h.DB.Where("post_id = ? AND user_id = ?", post.ID, userID).Take(&like).Error == nil {
-			post.IsLikedByMe = true
-		}
+		var myLikes int64
+		h.DB.Model(&models.Like{}).Where("post_id = ? AND user_id = ?", post.ID, userID).Count(&myLikes)
+		post.IsLikedByMe = myLikes > 0
 	}
 
 	// ИСПРАВЛЕНО: Возвращаем ПОСТ, а не комментарии
@@ -298,8 +326,12 @@ func (h *PostHandler) GetPostsByIDs(c *gin.Context) {
 		commentCountMap[comment.PostID]++
 	}
 
+	// posts[i].UserUsername = utils.GetUsernameByID(posts[i].UserID)
 	for i := range posts {
-		posts[i].UserUsername = utils.GetUsernameByID(posts[i].UserID)
+		if u := utils.GetUserByID(posts[i].UserID); u != nil {
+			posts[i].UserUsername = u.Username
+			posts[i].UserAvatarUrl = u.AvatarUrl
+		}
 		posts[i].LikesCount = likesCountMap[posts[i].ID]
 		posts[i].IsLikedByMe = userLikesMap[posts[i].ID]
 		posts[i].CommentsCount = commentCountMap[posts[i].ID]

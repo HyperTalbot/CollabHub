@@ -61,11 +61,16 @@ func main() {
 
 			// Создать комментарий к посту (POST .../posts/4/comments)
 			posts.POST("/:id/comments", middlewares.AuthRequired(), commentHandler.CreateComment)
+
+			// алиас роута ветки комментария внутри группы /posts.
+			// Нужен, потому что внешний прокси (production) пропускает только
+			// /api/v1/posts/*, а /api/v1/comments/* возвращал 404.
+			// Конфликтов нет: "/comment-thread/:id" — два сегмента, "/:id" — один.
+			posts.GET("/comment-thread/:id", middlewares.AuthOptional(), commentHandler.GetCommentThread)
 		}
 
 		comments := apiV1.Group("/comments")
 		{
-
 			// comments.Use(middlewares.AuthRequired())
 			// :id здесь - это ID комментария
 			comments.POST("/:id/like", middlewares.AuthRequired(), commentHandler.LikeComment)

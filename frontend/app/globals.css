@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+/* Tailwind v4: тёмная тема по КЛАССУ.
+   ThemeContext вешает/снимает класс .dark на <html>, но без этой
+   директивы утилиты dark:... в Tailwind v4 НЕ применяются
+   (по умолчанию там media-стратегия). Это и была причина "неработы" тем. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* CSS-переменные фона/текста именно для класс-режима тёмной темы
+   (чтобы фон страницы реально менялся при переключении) */
+:root.dark {
+  --background: #0b1120;
+  --foreground: #e2e8f0;
+}
+
+/* Плавная смена цветов при переключении темы */
+body {
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

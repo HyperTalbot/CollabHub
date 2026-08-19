@@ -152,7 +152,7 @@ export default function AppHeader({
 					<div className="w-4/5 mx-auto bg-white shadow-lg rounded-full flex items-center py-2 transition-all dark:bg-gray-800 dark:border dark:border-gray-700"> 
 						{/* TODO: добавить при наведении - платформа такая-то */}
             <div className="flex-1 flex justify-center items-center space-x-0">
-              <NavLink href="/doubleyou" iconSrc="/logo/doubleyou.svg" label="NQB" />
+              <NavLink href="/doubleyou" iconSrc="/logo/doubleyou.svg" label="Quasar" />
               <NavLink href="/flip" iconSrc="/logo/flashcards.jpg" label="Flip" />
               <NavLink href="/kvach" iconSrc="/logo/telescope.svg" label="Telescope" />
               <NavLink href="/homepage" iconSrc="/logo/home.svg" label="Home" />
@@ -276,7 +276,7 @@ export default function AppHeader({
                       icon={Pencil}
                       label="Режим редактора"
                       onClick={() => alert('Режим редактора (TODO)')} 
-                      extraLabel="Max"
+                      extraLabel="Plus"
                     />
                     <DropdownItem
                       icon={Palette}

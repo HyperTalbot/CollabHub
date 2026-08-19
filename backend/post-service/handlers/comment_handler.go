@@ -84,8 +84,12 @@ func (h *CommentHandler) GetCommentsByPost(c *gin.Context) {
 		}
 	}
 
+	// comments[i].UserUsername = utils.GetUsernameByID(comments[i].UserID)
 	for i := range comments {
-		comments[i].UserUsername = utils.GetUsernameByID(comments[i].UserID)
+		if u := utils.GetUserByID(comments[i].UserID); u != nil {
+			comments[i].UserUsername = u.Username
+			comments[i].UserAvatarUrl = u.AvatarUrl // НОВОЕ: аватарки в комментариях
+		}
 		comments[i].LikesCount = likesCountMap[comments[i].ID]
 		comments[i].IsLikedByMe = userLikesMap[comments[i].ID]
 	}
@@ -150,7 +154,14 @@ func (h *CommentHandler) CreateComment(c *gin.Context) {
 
 	// Обогащаем комментарий ПЕРЕД отправкой
 	// (Фронтенд не должен ничего обновлять, он должен получить готовые данные)
-	comment.UserUsername = utils.GetUsernameByID(comment.UserID)
+	//        comment.UserUsername = utils.GetUsernameByID(comment.UserID)
+	//    на блок:
+	// Обогащаем комментарий ПЕРЕД отправкой
+	// (Фронтенд не должен ничего обновлять, он должен получить готовые данные)
+	if u := utils.GetUserByID(comment.UserID); u != nil {
+		comment.UserUsername = u.Username
+		comment.UserAvatarUrl = u.AvatarUrl // НОВОЕ: аватар созданного комментария
+	}
 	comment.LikesCount = 0
 	comment.IsLikedByMe = false
 
@@ -305,9 +316,12 @@ func (h *CommentHandler) GetCommentThread(c *gin.Context) {
 		commentIDs[i] = comment.ID
 	}
 
-	// Обогащаем Username
+	// Обогащаем Username + AvatarUrl
 	for i := range comments {
-		comments[i].UserUsername = utils.GetUsernameByID(comments[i].UserID)
+		if u := utils.GetUserByID(comments[i].UserID); u != nil {
+			comments[i].UserUsername = u.Username
+			comments[i].UserAvatarUrl = u.AvatarUrl // НОВОЕ: аватарки в ветке
+		}
 	}
 
 	// Обогащаем Лайками
