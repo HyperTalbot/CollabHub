@@ -16,20 +16,22 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
   return (
     // Задний фон (Overlay)
-    <div 
+    <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center z-50"
       onClick={onClose} // Закрытие по клику на фон
     >
-      {/* Само модальное окно */}
-      <div 
-        className="bg-white p-8 rounded-lg shadow-2xl max-w-sm w-full relative"
+      {/* Само модальное окно (+ тёмная тема) */}
+      <div
+        className="bg-white dark:bg-gray-800 border border-transparent dark:border-gray-700 p-8 rounded-lg shadow-2xl max-w-sm w-full relative"
         onClick={(e) => e.stopPropagation()} // Предотвращаем закрытие при клике внутри
       >
-        <h2 className="text-xl font-bold mb-4 text-center text-black">Необходимо авторизоваться</h2>
-        <p className="text-gray-700 mb-6 text-center">
+        <h2 className="text-xl font-bold mb-4 text-center text-black dark:text-white">
+          Необходимо авторизоваться
+        </h2>
+        <p className="text-gray-700 dark:text-gray-300 mb-6 text-center">
           Чтобы ставить лайки, оставлять комментарии или создавать посты, пожалуйста, войдите или зарегистрируйтесь.
         </p>
-        
+
         <div className="flex flex-col space-y-3">
           <button
             onClick={() => {
@@ -45,15 +47,15 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
               onClose();
               router.push('/register');
             }}
-            className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 rounded transition duration-200"
+            className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 rounded transition duration-200 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200"
           >
             Регистрация
           </button>
         </div>
-        
-        <button 
+
+        <button
           onClick={onClose}
-          className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-2xl"
+          className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-2xl dark:text-gray-500 dark:hover:text-gray-300"
           aria-label="Закрыть"
         >
           &times;

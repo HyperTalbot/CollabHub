@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type UserHandler struct {
@@ -25,13 +26,15 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 	var user models.User
 	var err error
 
+	silentDB := h.DB.Session(&gorm.Session{Logger: h.DB.Config.Logger.LogMode(logger.Silent)})
+
 	// Пытаемся определить, число это или строка
 	if id, convErr := strconv.ParseUint(param, 10, 64); convErr == nil {
 		// Это ID
-		err = h.DB.First(&user, id).Error
+		err = silentDB.First(&user, id).Error
 	} else {
 		// Это Username
-		err = h.DB.Where("username = ?", param).First(&user).Error
+		err = silentDB.Where("username = ?", param).First(&user).Error
 	}
 
 	if err != nil {

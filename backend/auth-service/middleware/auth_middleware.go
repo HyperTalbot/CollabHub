@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"backend/auth-service/utils" // Поменяйте путь импорта для каждого сервиса соответственно!
+	"backend/auth-service/utils"
 	"net/http"
 	"strings"
 

@@ -1,0 +1,345 @@
+universe-platform/
+├── frontend/                          # Next.js 15 Frontend
+│   ├── app/                          # App Router (Next.js 15)
+│   │   ├── (auth)/                   # Auth layout group
+│   │   │   ├── login/
+│   │   │   │   └── page.tsx
+│   │   │   └── register/
+│   │   │       └── page.tsx
+│   │   ├── (main)/                   # Main layout group
+│   │   │   ├── layout.tsx            # Main layout with nav
+│   │   │   ├── page.tsx              # Home feed
+│   │   │   ├── watch/                # YouTube-like
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── [id]/
+│   │   │   │       └── page.tsx
+│   │   │   ├── shorts/               # TikTok-like
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── [id]/
+│   │   │   │       └── page.tsx
+│   │   │   ├── live/                 # Twitch-like
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── [id]/
+│   │   │   │       └── page.tsx
+│   │   │   ├── social/               # Twitter/Reddit-like
+│   │   │   │   ├── page.tsx
+│   │   │   │   ├── post/[id]/
+│   │   │   │   │   └── page.tsx
+│   │   │   │   └── community/[id]/
+│   │   │   │       └── page.tsx
+│   │   │   ├── music/                # Spotify-like
+│   │   │   │   ├── page.tsx
+│   │   │   │   ├── track/[id]/
+│   │   │   │   │   └── page.tsx
+│   │   │   │   └── playlist/[id]/
+│   │   │   │       └── page.tsx
+│   │   │   ├── chat/                 # Discord/Telegram-like
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── [id]/
+│   │   │   │       └── page.tsx
+│   │   │   └── profile/[username]/
+│   │   │       └── page.tsx
+│   │   ├── api/                      # API routes (if needed)
+│   │   │   └── upload/
+│   │   │       └── route.ts
+│   │   ├── layout.tsx                # Root layout
+│   │   ├── globals.css
+│   │   └── error.tsx
+│   ├── components/
+│   │   ├── ui/                       # Reusable UI components
+│   │   │   ├── button.tsx
+│   │   │   ├── card.tsx
+│   │   │   ├── dialog.tsx
+│   │   │   ├── input.tsx
+│   │   │   └── avatar.tsx
+│   │   ├── layout/
+│   │   │   ├── Header.tsx
+│   │   │   ├── Sidebar.tsx
+│   │   │   └── Navigation.tsx
+│   │   ├── feed/
+│   │   │   ├── FeedItem.tsx
+│   │   │   ├── VideoCard.tsx
+│   │   │   ├── ShortCard.tsx
+│   │   │   ├── StreamCard.tsx
+│   │   │   ├── PostCard.tsx
+│   │   │   └── AudioCard.tsx
+│   │   ├── video/
+│   │   │   ├── VideoPlayer.tsx
+│   │   │   └── VideoUpload.tsx
+│   │   ├── chat/
+│   │   │   ├── ChatWindow.tsx
+│   │   │   ├── MessageList.tsx
+│   │   │   └── MessageInput.tsx
+│   │   └── player/
+│   │       └── AudioPlayer.tsx
+│   ├── lib/
+│   │   ├── api/                      # API client
+│   │   │   ├── client.ts             # Axios/Fetch config
+│   │   │   ├── auth.ts
+│   │   │   ├── video.ts
+│   │   │   ├── social.ts
+│   │   │   ├── music.ts
+│   │   │   └── chat.ts
+│   │   ├── hooks/                    # Custom hooks
+│   │   │   ├── useAuth.ts
+│   │   │   ├── useFeed.ts
+│   │   │   ├── useWebSocket.ts
+│   │   │   └── useInfiniteScroll.ts
+│   │   ├── store/                    # State management (Zustand)
+│   │   │   ├── authStore.ts
+│   │   │   ├── playerStore.ts
+│   │   │   └── chatStore.ts
+│   │   └── utils/
+│   │       ├── format.ts
+│   │       └── validators.ts
+│   ├── types/
+│   │   ├── user.ts
+│   │   ├── video.ts
+│   │   ├── post.ts
+│   │   └── chat.ts
+│   ├── public/
+│   ├── package.json
+│   ├── next.config.js
+│   ├── tailwind.config.ts
+│   └── tsconfig.json
+│
+├── backend/                           # Go Backend
+│   ├── cmd/
+│   │   └── api/
+│   │       └── main.go               # Entry point
+│   ├── internal/
+│   │   ├── auth/                     # Auth service
+│   │   │   ├── handler.go
+│   │   │   ├── service.go
+│   │   │   ├── repository.go
+│   │   │   └── models.go
+│   │   ├── user/                     # User service
+│   │   │   ├── handler.go
+│   │   │   ├── service.go
+│   │   │   ├── repository.go
+│   │   │   └── models.go
+│   │   ├── video/                    # Video service
+│   │   │   ├── handler.go
+│   │   │   ├── service.go
+│   │   │   ├── repository.go
+│   │   │   ├── transcoder.go
+│   │   │   └── models.go
+│   │   ├── shorts/                   # Shorts service
+│   │   │   ├── handler.go
+│   │   │   ├── service.go
+│   │   │   ├── repository.go
+│   │   │   └── models.go
+│   │   ├── stream/                   # Live streaming
+│   │   │   ├── handler.go
+│   │   │   ├── service.go
+│   │   │   ├── rtmp.go
+│   │   │   └── models.go
+│   │   ├── social/                   # Social/Posts
+│   │   │   ├── handler.go
+│   │   │   ├── service.go
+│   │   │   ├── repository.go
+│   │   │   └── models.go
+│   │   ├── music/                    # Music/Audio
+│   │   │   ├── handler.go
+│   │   │   ├── service.go
+│   │   │   ├── repository.go
+│   │   │   └── models.go
+│   │   ├── chat/                     # Chat/Messaging
+│   │   │   ├── handler.go
+│   │   │   ├── service.go
+│   │   │   ├── repository.go
+│   │   │   ├── websocket.go
+│   │   │   └── models.go
+│   │   ├── feed/                     # Unified feed
+│   │   │   ├── handler.go
+│   │   │   ├── service.go
+│   │   │   ├── aggregator.go
+│   │   │   └── models.go
+│   │   ├── search/                   # Search service
+│   │   │   ├── handler.go
+│   │   │   ├── service.go
+│   │   │   └── elasticsearch.go
+│   │   └── notification/             # Notifications
+│   │       ├── handler.go
+│   │       ├── service.go
+│   │       └── models.go
+│   ├── pkg/
+│   │   ├── config/                   # Configuration
+│   │   │   └── config.go
+│   │   ├── database/                 # DB connections
+│   │   │   ├── postgres.go
+│   │   │   ├── redis.go
+│   │   │   └── mongo.go
+│   │   ├── middleware/               # HTTP middleware
+│   │   │   ├── auth.go
+│   │   │   ├── cors.go
+│   │   │   ├── ratelimit.go
+│   │   │   └── logger.go
+│   │   ├── storage/                  # File storage
+│   │   │   ├── s3.go
+│   │   │   └── local.go
+│   │   ├── jwt/                      # JWT utilities
+│   │   │   └── jwt.go
+│   │   ├── validator/                # Input validation
+│   │   │   └── validator.go
+│   │   └── logger/                   # Logging
+│   │       └── logger.go
+│   ├── migrations/                   # DB migrations
+│   │   ├── 001_create_users.up.sql
+│   │   ├── 001_create_users.down.sql
+│   │   ├── 002_create_videos.up.sql
+│   │   └── ...
+│   ├── scripts/
+│   │   └── seed.go                   # DB seeding
+│   ├── Dockerfile
+│   ├── go.mod
+│   └── go.sum
+│
+├── infrastructure/                    # DevOps & Infrastructure
+│   ├── docker/
+│   │   ├── docker-compose.yml
+│   │   ├── docker-compose.dev.yml
+│   │   └── nginx/
+│   │       └── nginx.conf
+│   ├── kubernetes/
+│   │   ├── deployments/
+│   │   ├── services/
+│   │   └── ingress/
+│   └── terraform/
+│       └── main.tf
+│
+└── docs/
+    ├── API.md
+    ├── ARCHITECTURE.md
+    └── DEPLOYMENT.md
+
+1. у newuser в чате с testuser в среднем меню появилось "Начните общение", хотя сообщения там есть. и нужно чтобы вместе с последним сообщением показывалась дата последнего сообщения в формате: DD.MM, если год не текущий, то DD.MM.YYYY.
+2. нужно добавить (как из telegram) на нажатие на сообщение появляется контекстное меню с соответствующими иконками и текстом: Ответить, Скопировать, Переслать, Закрепить, Перевести (на другой язык), Изменить, Удалить
+
+2. нужна админка с мониторингом (пока заглушка), метриками (пока заглушка), crud для всего 
+3. правила политики (текст)
+
+/Projects/CollabHub/
+│
+├── /frontend/
+│   ├── /app/
+│   │   ├── /(app)/
+│   │   │   ├── /homepage/page.tsx
+│   │   │   ├── /misable/page.tsx
+│   │   │   ├── /postogram/page.tsx
+│   │   │   ├── /symphonya/page.tsx
+│   │   │   ├── ...
+│   │   └── ... (и так далее для symphonya, doubleyou, ai...)
+│   ├── /components/
+│   │   ├── /auth/
+│   │   ├── /comment/
+│   │   ├── /create/
+│   │   ├── /messenger/
+│   │   ├── /music/
+│   │   │   └── MusicPlayer.tsx
+│   │   ├── /landing/
+│   │   ├── /layout/
+│   │   ├── ...
+│   ├── /context/
+│   │   ├── AuthContext.tsx
+│   │   ├── ThemeContext.tsx
+│   │   ├── WebSocketContext.tsx
+│   ├── /hooks/
+│   ├── /lib/
+│   ├── /node_modules/
+│   ├── /public/
+│   │   ├── /icons/
+│   │   ├── /logo/
+│   ├── /services/
+│   ├── /types/
+│   ├── /utils/
+│   ├── package.json
+│   └── /
+│
+├── /backend/
+│   │
+│   ├── /auth-service/ 
+│   │   ├── /handlers/
+│   │   ├── /models/
+│   │   ├── go.mod 
+│   │   └── main.go 
+│   │
+│   ├── /posts-service/
+│   │   ├── /handlers/
+│   │   ├── /models/
+│   │   ├── go.mod
+│   │   └── main.go
+│   │
+│   ├── /messenger-service/
+│   │   ├── /db/
+│   │   │   ├── db.go
+│   │   ├── /handlers/
+│   │   │   ├── channel_handler.go
+│   │   │   ├── conversation_handler.go
+│   │   │   ├── group_handler.go
+│   │   │   ├── messege_handler.go
+│   │   │   ├── server_handler.go
+│   │   ├── /middleware/
+│   │   │   ├── auth_middleware.go
+│   │   ├── /models/
+│   │   │   ├── channel.go
+│   │   │   ├── conversation_participant.go
+│   │   │   ├── conversation.go
+│   │   │   ├── group.go
+│   │   │   ├── messange.go
+│   │   │   ├── server.go
+│   │   ├── /utils/
+│   │   │   ├── jwt.go
+│   │   │   ├── user_fetcher.go
+│   │   ├── /ws/
+│   │   │   ├── client.go
+│   │   │   ├── hub.go
+│   │   │   ├── voice.go
+│   │   ├── .env
+│   │   ├── go.mod
+│   │   └── main.go 
+│   │
+│   ├── /music-service/ 
+│   │   ├── /handlers/
+│   │   ├── /models/
+│   │   ├── go.mod
+│   │   └── main.go
+│   │
+│   └── ... (и так далее для music, video, ai...)
+
+
+
+/auth-service
+  /db           # Всё, что связано с подключением к БД
+    db.go
+  /handlers     # Обработчики HTTP-запросов (логика эндпоинтов)
+    auth_handler.go
+  /models       # Структуры данных (наша модель User)
+    user_model.go
+  /utils        # Вспомогательные функции (хэширование, JWT)
+    password.go
+    token.go
+  main.go       # Главный файл, "точка входа", запуск сервера
+  go.mod        # Файл зависимостей
+  go.sum
+  .env          # Секреты (пароль от БД, JWT-ключ). НЕ комитьте его в Git!
+
+
+testuser 
+test@user.com
+mypassword123
+
+newuser
+new@user.com 
+password
+
+newuser2
+new2@user.com 
+password
+
+
+/add <файл1> <файл2> - добавить файл в контекст чата 
+/drop <файл1> <файл2> - убрать файл из контекста (чтобы экономить память модели)
+/ls - показать список файлов, которые сейчас "видит" нейросеть
+/undo - отменить последние изменения и откатить Git-коммит, сделанный Aider (если модель сделала что-то не то)
+/help  - показать список всех команд

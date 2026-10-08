@@ -1,3 +1,4 @@
+// /backend/messenger-service/ws/client.go
 package ws
 
 import (

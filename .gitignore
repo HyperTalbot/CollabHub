@@ -2,11 +2,6 @@ trash/
 infrastructure/
 images/
 .env
-go.mod
-go.sum
-интеграция_ии.md
-ideas.txt
-project-structure.txt
 node_modules/
 uploads/
 
