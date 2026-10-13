@@ -4,15 +4,11 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Cookies from "js-cookie";
-// import { useAuth } from '@/context/AuthContext';
 import AppHeader from '@/components/layout/AppHeader';
-// AuthProvider предполагается смонтированным выше (корневой layout) —
-// WebSocketProvider и страницы используют useAuth
-// import { AuthProvider } from '@/context/AuthContext';
-// import './globals.css'; // Ваш файл стилей Tailwind
 import { ThemeProvider } from '@/context/ThemeContext';
 import { Toaster } from "react-hot-toast";
 import { WebSocketProvider } from "@/context/WebSocketContext";
+import { GlobalCallLayer } from "@/components/messenger/GlobalCallLayer"; // НОВОЕ
 
 const PANEL1_HEIGHT = 36; // (h-16 + p-2 + space-y-2)
 const PANEL2_HEIGHT = 28; // (h-12 + p-0 + space-y-2)
@@ -76,6 +72,10 @@ export default function AppLayout({
               color: '#fff',
             }}}
           />
+
+          {/* НОВОЕ: глобальный слой звонков — модалка живёт здесь,
+          а не внутри ChatHeader. Работает на любой странице. */}
+          <GlobalCallLayer />
 
           {/* ===== (Опционально) Боковая панель (Sidebar) ===== */}
           {/* Можно добавить <aside>...</aside> и использовать flex/grid

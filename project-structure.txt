@@ -329,6 +329,10 @@ testuser
 test@user.com
 mypassword123
 
+Testuser2
+test2@user.com
+mypassword123
+
 newuser
 new@user.com 
 password
