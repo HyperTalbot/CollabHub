@@ -53,6 +53,9 @@ export const CallModal: React.FC<CallModalProps> = ({
   // Отладка
   const [pcState, setPcState] = useState('new');
   const [iceState, setIceState] = useState('new');
+  // Медиастатистика: «соединение есть, а звука нет» = bytesReceived ~ 0.
+  // Обновляется каждые 2 с во время активного разговора.
+  const [mediaStats, setMediaStats] = useState<{ inAudio: number; outAudio: number }>({ inAudio: 0, outAudio: 0 });
   const [localIce, setLocalIce] = useState<Record<string, number>>({});
   const [remoteIce, setRemoteIce] = useState<Record<string, number>>({});
   const [remoteKinds, setRemoteKinds] = useState('');
@@ -392,6 +395,40 @@ export const CallModal: React.FC<CallModalProps> = ({
       }
     }, 1000);
     return () => clearInterval(id);
+  }, [callStatus]);
+
+  // ─────────────────────────────────────────────────────────────
+  // Опрос медиастатистики каждые 2 с. Ключевой диагностический
+  // признак: pcState=connected, но inAudio≈0 → медиапакеты от
+  // собеседника не долетают (пробит только signaling-канал, RTP
+  // режется NAT/провайдером). inAudio растёт, а звука нет → проблема
+  // на стороне вывода (autoplay-блокировка, системный ввод/вывод).
+  // ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (callStatus !== 'active') return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const pc = peerConnectionRef.current;
+        if (!pc) return;
+        const stats = await pc.getStats();
+        let inAudio = 0;
+        let outAudio = 0;
+        stats.forEach((r) => {
+          if (r.type === 'inbound-rtp' && r.kind === 'audio') inAudio = r.bytesReceived || 0;
+          if (r.type === 'outbound-rtp' && r.kind === 'audio') outAudio = r.bytesSent || 0;
+        });
+        if (!stopped) setMediaStats({ inAudio, outAudio });
+      } catch {
+        /* getStats недоступен — игнорируем */
+      }
+    };
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
   }, [callStatus]);
 
   // ═════════════════════════════════════════════════════════════
@@ -902,7 +939,14 @@ export const CallModal: React.FC<CallModalProps> = ({
 
         {/* Отладочная плашка:
             relay:0 у обоих = TURN не работает → телефон↔телефон невозможен
-            peer ice "нет"  = сигналы не доходят → проблема в WS-хабе */}
+            peer ice "нет"  = сигналы не доходят → проблема в WS-хабе
+            active + inAudio≈0 = RTP-медиа не долетает (см. ниже) */}
+        {callStatus === 'active' && mediaStats.inAudio < 1000 && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-red-900/85 px-4 py-2 rounded-lg text-xs text-white font-mono text-center leading-relaxed max-w-[90vw] pointer-events-none z-30">
+            🔇 Входящий звук НЕ приходит ({Math.round(mediaStats.inAudio / 1024)} КБ).
+            Сигнал есть, но RTP-медиа режется NAT/провайдером — нужен рабочий TURN-relay.
+          </div>
+        )}
         {callStatus !== 'active' && (
           <div className="absolute bottom-28 left-1/2 -translate-x-1/2 bg-black/70 px-3 py-2 rounded-lg text-[10px] text-gray-300 font-mono text-center leading-relaxed max-w-[90vw] pointer-events-none">
             <div>
