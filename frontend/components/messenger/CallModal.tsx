@@ -56,6 +56,9 @@ export const CallModal: React.FC<CallModalProps> = ({
   // Медиастатистика: «соединение есть, а звука нет» = bytesReceived ~ 0.
   // Обновляется каждые 2 с во время активного разговора.
   const [mediaStats, setMediaStats] = useState<{ inAudio: number; outAudio: number }>({ inAudio: 0, outAudio: 0 });
+  // Выбранная ICE-пара (host/host, host/srflx, relay/relay …) — по ней видно,
+  // КАКОЙ маршрут реально использует медиа.
+  const [selectedRoute, setSelectedRoute] = useState('—');
   const [localIce, setLocalIce] = useState<Record<string, number>>({});
   const [remoteIce, setRemoteIce] = useState<Record<string, number>>({});
   const [remoteKinds, setRemoteKinds] = useState('');
@@ -414,11 +417,34 @@ export const CallModal: React.FC<CallModalProps> = ({
         const stats = await pc.getStats();
         let inAudio = 0;
         let outAudio = 0;
+        // Определяем выбранный ICE-маршрут по candidate-pair.selected
+        const candById = new Map<string, any>();
         stats.forEach((r) => {
           if (r.type === 'inbound-rtp' && r.kind === 'audio') inAudio = r.bytesReceived || 0;
           if (r.type === 'outbound-rtp' && r.kind === 'audio') outAudio = r.bytesSent || 0;
+          if (r.type === 'local-candidate' || r.type === 'remote-candidate') {
+            candById.set(r.id, r);
+          }
         });
-        if (!stopped) setMediaStats({ inAudio, outAudio });
+
+        let route = '—';
+        stats.forEach((r) => {
+          if (r.type === 'candidate-pair' && (r as any).selected) {
+            const lc = candById.get(r.localCandidateId);
+            const rc = candById.get(r.remoteCandidateId);
+            const lt = lc?.candidateType ?? '?';
+            const rt = rc?.candidateType ?? '?';
+            const lip = lc?.ip || lc?.address || '';
+            const rip = rc?.ip || rc?.address || '';
+            route = `${lt} → ${rt} (${lip} ↔ ${rip})`;
+            console.log('🧊 selected ICE pair:', route);
+          }
+        });
+
+        if (!stopped) {
+          setMediaStats({ inAudio, outAudio });
+          setSelectedRoute(route);
+        }
       } catch {
         /* getStats недоступен — игнорируем */
       }
@@ -944,7 +970,21 @@ export const CallModal: React.FC<CallModalProps> = ({
         {callStatus === 'active' && mediaStats.inAudio < 1000 && (
           <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-red-900/85 px-4 py-2 rounded-lg text-xs text-white font-mono text-center leading-relaxed max-w-[90vw] pointer-events-none z-30">
             🔇 Входящий звук НЕ приходит ({Math.round(mediaStats.inAudio / 1024)} КБ).
-            Сигнал есть, но RTP-медиа режется NAT/провайдером — нужен рабочий TURN-relay.
+            <div className="mt-1 text-[10px] text-red-200">
+              маршрут медиа: {selectedRoute}
+            </div>
+            {/srflx/.test(selectedRoute) && !/relay/.test(selectedRoute) ? (
+              <div className="mt-1 text-yellow-300">
+                ⚠️ ICE выбрал внешний адрес через STUN, но оба пира за ОДНИМ
+                NAT провайдера — пакеты уходят наружу и не возвращаются внутрь
+                (нет hairpinning). Нужен TURN-relay на сервере с белым IP.
+              </div>
+            ) : (
+              <div className="mt-1">
+                Сигнал есть, но RTP-медиа режется NAT/провайдером — нужен
+                рабочий TURN-relay.
+              </div>
+            )}
           </div>
         )}
         {callStatus !== 'active' && (
