@@ -24,7 +24,7 @@ services:
       - --external-ip=${TURN_EXTERNAL_IP}
       - --fingerprint
       - --lt-cred-mech
-      - --user=collabhub:SuperSecretChangeMe2024
+      - --user=collabhub:${TURN_PASSWORD}
       - --realm=collabhub.cloudpub.ru
       - --min-port=49152
       - --max-port=49200
