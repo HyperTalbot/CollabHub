@@ -92,3 +92,9 @@ func SearchUsers(query string) []UserSearchResult {
 
 	return results
 }
+
+// InvalidateUserCache сбрасывает кэш пользователя, чтобы свежие данные
+// (например, изменённый display_name) подтянулись из auth-service.
+func InvalidateUserCache(userID uint) {
+delete(userCache, userID)
+}

@@ -47,6 +47,7 @@ func main() {
 	notificationHandler := &handlers.NotificationHandler{DB: db.DB}
 	roleHandler := &handlers.RoleHandler{DB: db.DB}
 	friendHandler := &handlers.FriendHandler{DB: db.DB, Hub: hub}
+	chatInfoHandler := &handlers.ChatInfoHandler{DB: db.DB, Hub: hub}
 
 	r := gin.Default()
 
@@ -221,6 +222,11 @@ func main() {
 			protected.DELETE("/friends/:friend_id", friendHandler.RemoveFriend)
 			protected.GET("/friends", friendHandler.GetFriends)
 			protected.GET("/friends/requests", friendHandler.GetFriendRequests)
+
+			// --- ИНФОРМАЦИЯ О ЧАТЕ (модалка ChatHeader) ---
+			protected.GET("/chats/:id/info", chatInfoHandler.GetChatInfo)
+			protected.PUT("/chats/:id/group-info", chatInfoHandler.UpdateGroupInfo)
+			protected.PUT("/contacts/:user_id", chatInfoHandler.UpdateContact)
 		}
 	}
 
