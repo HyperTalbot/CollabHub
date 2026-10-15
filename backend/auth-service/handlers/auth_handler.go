@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -236,11 +237,12 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	userID, _ := c.Get("userID")
 
 	var input struct {
-		AvatarURL string `json:"avatar_url"`
-		CoverURL  string `json:"cover_url"` // обложка
-		Bio       string `json:"bio"`
-		Location  string `json:"location"`
-		Website   string `json:"website"`
+		DisplayName *string `json:"display_name"`
+		AvatarURL   string  `json:"avatar_url"`
+		CoverURL    string  `json:"cover_url"` // обложка
+		Bio         string  `json:"bio"`
+		Location    string  `json:"location"`
+		Website     string  `json:"website"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -251,6 +253,16 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	if err := h.DB.First(&user, userID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
+	}
+
+	// «Изменить контакт» в модалке чата: display_name обновляется всегда,
+	// когда поле прислано (в т.ч. пустая строка — тогда fallback на username).
+	if input.DisplayName != nil {
+		name := strings.TrimSpace(*input.DisplayName)
+		if name == "" {
+			name = user.Username
+		}
+		user.DisplayName = name
 	}
 
 	// Обновляем только то, что прислали

@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"backend/messenger-service/models"
+	"encoding/json"
 	"backend/messenger-service/ws"
 	"net/http"
 	"time"
@@ -179,9 +180,21 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 		return
 	}
 
-	// 2. Проверяем права (Только владелец может менять настройки)
-	if group.OwnerID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Only owner can update group info"})
+	// 2. Проверяем права: менять настройки группы может только её участник
+	// с ролью owner/admin (или владелец группы).
+	if err := h.DB.Preload("Members").First(&group, group.ID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+		return
+	}
+
+	canEdit := group.OwnerID == userID
+	for _, m := range group.Members {
+		if m.UserID == userID && (m.Role == "owner" || m.Role == "admin") {
+			canEdit = true
+		}
+	}
+	if !canEdit {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only owner or admin can update group info"})
 		return
 	}
 
@@ -196,6 +209,22 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 	if err := h.DB.Save(&group).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update group"})
 		return
+	}
+
+	// WS-уведомление всем участникам, чтобы группа (название/аватарка)
+	// обновилась у всех в списке чатов и в шапке в реальном времени.
+	if h.Hub != nil {
+		updatePayload, _ := json.Marshal(map[string]interface{}{
+			"type": "group_updated",
+			"payload": map[string]interface{}{
+				"id":         group.ID,
+				"name":       group.Name,
+				"avatar_url": group.AvatarURL,
+			},
+		})
+		for _, m := range group.Members {
+			h.Hub.SendToUser(m.UserID, updatePayload)
+		}
 	}
 
 	c.JSON(http.StatusOK, group)
