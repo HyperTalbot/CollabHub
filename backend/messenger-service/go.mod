@@ -1,6 +1,6 @@
 module backend/messenger-service
 
-go 1.26.0
+go 1.19
 
 require (
 	github.com/bytedance/gopkg v0.1.4 // indirect

@@ -4,12 +4,15 @@ import axiosMessenger from '@/lib/axiosMessenger';
 import { Conversation, Group, User, ChatPreview } from '@/types/messenger';
 import { Phone, Video, Search, Settings, Pin, X, Users as UsersIcon, Circle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { ChatInfoModal } from './ChatInfoModal';
 
 interface ChatHeaderProps {
   chatId: number;
   chatType: 'dm' | 'group';
   currentUser: User | null;
   cachedChatData?: ChatPreview;
+  // обновление имени контакта / группы из модалки (синхронизирует список чатов)
+  onInfoUpdated?: (info: { kind: 'contact' | 'group'; id: number; name: string; avatar_url?: string }) => void;
 }
 
 interface PinnedMessage {
@@ -24,6 +27,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   chatType,
   currentUser,
   cachedChatData,
+  onInfoUpdated,
 }) => {
   const [title, setTitle] = useState(chatType === 'group' ? 'Группа' : 'Пользователь');
   const [avatar, setAvatar] = useState('');
@@ -36,6 +40,37 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   const [loadingPinned, setLoadingPinned] = useState(false);
   const [isCalling, setIsCalling] = useState(false);
 
+  // Модалка с информацией о собеседнике/группе (клик по хитбоксу в шапке)
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [partnerUserId, setPartnerUserId] = useState<number | null>(null);
+
+  // Live-обновления из WebSocket: переименование группы / контакта
+  useEffect(() => {
+    const onGroupUpdated = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (chatType === 'group' && Number(detail?.id) === Number(chatId)) {
+        if (detail.name) setTitle(detail.name);
+        if (detail.avatar_url !== undefined) setAvatar(detail.avatar_url || '');
+      }
+    };
+    const onContactUpdated = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (
+        chatType === 'dm' &&
+        partnerUserId !== null &&
+        Number(detail?.user_id) === Number(partnerUserId)
+      ) {
+        if (detail.display_name) setTitle(detail.display_name);
+      }
+    };
+    window.addEventListener('group-updated', onGroupUpdated);
+    window.addEventListener('contact-updated', onContactUpdated);
+    return () => {
+      window.removeEventListener('group-updated', onGroupUpdated);
+      window.removeEventListener('contact-updated', onContactUpdated);
+    };
+  }, [chatId, chatType, partnerUserId]);
+
   useEffect(() => {
     if (!chatId || !currentUser) return;
 
@@ -47,6 +82,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
         if (chatType === 'dm') {
           setSubtext('в сети');
+          const conversation = cachedChatData.originalData as Conversation;
+          const p = conversation?.participants?.find(
+            (pp) => Number(pp.id) !== Number(currentUser.id)
+          );
+          setPartnerUserId(p ? Number(p.id) : null);
         } else {
           const groupData = cachedChatData.originalData as Group;
           setSubtext(`${groupData.members?.length || 0} участников`);
@@ -63,8 +103,9 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           const partner = data.participants.find((p) => Number(p.id) !== Number(currentUser.id));
 
           if (partner && partner.username) {
-            setTitle(partner.username);
+            setTitle(partner.display_name || partner.username);
             setAvatar(partner.avatar_url || '');
+            setPartnerUserId(Number(partner.id));
             setIsOnline(true);
             setSubtext('в сети');
           } else {
