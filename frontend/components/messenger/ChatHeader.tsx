@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import axiosMessenger from '@/lib/axiosMessenger';
 import { Conversation, Group, User, ChatPreview } from '@/types/messenger';
-import { Phone, Video, Search, Settings, Pin, X, Users as UsersIcon, Circle } from 'lucide-react';
+import { Phone, Video, Search, Settings, Pin, X, Users as UsersIcon, Circle, Reply } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ChatInfoModal } from './ChatInfoModal';
 
@@ -11,8 +11,12 @@ interface ChatHeaderProps {
   chatType: 'dm' | 'group';
   currentUser: User | null;
   cachedChatData?: ChatPreview;
-  // обновление имени контакта / группы из модалки (синхронизирует список чатов)
-  onInfoUpdated?: (info: { kind: 'contact' | 'group'; id: number; name: string; avatar_url?: string }) => void;
+}
+
+interface ReplySourcePreview {
+  id: number;
+  content: string;
+  sender_username: string;
 }
 
 interface PinnedMessage {
@@ -27,24 +31,45 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   chatType,
   currentUser,
   cachedChatData,
-  onInfoUpdated,
 }) => {
   const [title, setTitle] = useState(chatType === 'group' ? 'Группа' : 'Пользователь');
   const [avatar, setAvatar] = useState('');
   const [subtext, setSubtext] = useState(chatType === 'group' ? 'участники' : 'загрузка...');
   const [isOnline, setIsOnline] = useState(false);
   const [loading, setLoading] = useState(false);
-
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const [showPinned, setShowPinned] = useState(false);
   const [loadingPinned, setLoadingPinned] = useState(false);
   const [isCalling, setIsCalling] = useState(false);
-
-  // Модалка с информацией о собеседнике/группе (клик по хитбоксу в шапке)
+  
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [partnerUserId, setPartnerUserId] = useState<number | null>(null);
 
-  // Live-обновления из WebSocket: переименование группы / контакта
+  // панель сообщений, на которые дан мульти-ответ 
+  const [replySources, setReplySources] = useState<ReplySourcePreview[]>([]);
+  const [showReplySources, setShowReplySources] = useState(false);
+
+  // Слушаем клик по блоку ответа (несколько источников) из MessageBubble
+  useEffect(() => {
+    const onShow = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (!d?.sources?.length) return;
+      setReplySources(d.sources);
+      setShowReplySources(true);
+      setShowPinned(false); // панели взаимоисключающие
+    };
+    window.addEventListener('show-reply-sources', onShow);
+    return () => window.removeEventListener('show-reply-sources', onShow);
+  }, []);
+
+  // При переключении чата сбрасываем обе панели
+  useEffect(() => {
+    setShowPinned(false);
+    setPinnedMessages([]);
+    setShowReplySources(false);
+    setReplySources([]);
+  }, [chatId, chatType]);
+
   useEffect(() => {
     const onGroupUpdated = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -53,6 +78,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         if (detail.avatar_url !== undefined) setAvatar(detail.avatar_url || '');
       }
     };
+
     const onContactUpdated = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (
@@ -63,8 +89,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         if (detail.display_name) setTitle(detail.display_name);
       }
     };
+
     window.addEventListener('group-updated', onGroupUpdated);
     window.addEventListener('contact-updated', onContactUpdated);
+
     return () => {
       window.removeEventListener('group-updated', onGroupUpdated);
       window.removeEventListener('contact-updated', onContactUpdated);
@@ -79,7 +107,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         setTitle(cachedChatData.title || (chatType === 'group' ? 'Группа' : 'Пользователь'));
         setAvatar(cachedChatData.avatarUrl || '');
         setIsOnline(chatType === 'dm');
-
+        
         if (chatType === 'dm') {
           setSubtext('в сети');
           const conversation = cachedChatData.originalData as Conversation;
@@ -91,7 +119,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           const groupData = cachedChatData.originalData as Group;
           setSubtext(`${groupData.members?.length || 0} участников`);
         }
-
+        
         setLoading(false);
         return;
       }
@@ -101,7 +129,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         if (chatType === 'dm') {
           const { data } = await axiosMessenger.get<Conversation>(`/conversations/${chatId}`);
           const partner = data.participants.find((p) => Number(p.id) !== Number(currentUser.id));
-
+          
           if (partner && partner.username) {
             setTitle(partner.display_name || partner.username);
             setAvatar(partner.avatar_url || '');
@@ -148,6 +176,23 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   const togglePinned = () => {
     if (!showPinned) loadPinnedMessages();
     setShowPinned(!showPinned);
+    // панели взаимоисключающие в ОБЕ стороны.
+    setShowReplySources(false);
+  };
+
+  const handleInfoUpdated = (info: { kind: 'contact' | 'group'; id: number; name: string; avatar_url?: string }) => {
+    if (info.kind === 'contact') {
+      setTitle(info.name);
+      if (info.avatar_url) setAvatar(info.avatar_url);
+    } else if (info.kind === 'group') {
+      setTitle(info.name);
+      if (info.avatar_url) setAvatar(info.avatar_url);
+      window.dispatchEvent(
+        new CustomEvent('group-updated', {
+          detail: { id: info.id, name: info.name, avatar_url: info.avatar_url }
+        })
+      );
+    }
   };
 
   const initiateCall = async (callTypeParam: 'audio' | 'video') => {
@@ -157,11 +202,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     }
     if (isCalling) return;
 
-    // ══════════════════════════════════════════════════════════════
-    // ШАГ 1 (СИНХРОННО, внутри жеста клика): запрашиваем медиа.
-    // На iOS/Android getUserMedia обязан быть вызван в контексте
-    // пользовательского жеста. Любой await до него убивает жест.
-    // ══════════════════════════════════════════════════════════════
     let mediaPromise: Promise<MediaStream> | undefined;
     try {
       mediaPromise = navigator.mediaDevices.getUserMedia({
@@ -172,7 +212,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         },
         video: callTypeParam === 'video',
       });
-      // Гасим unhandled rejection, если дальше упадёт создание звонка
       mediaPromise.catch(() => {});
     } catch (e) {
       console.error('getUserMedia sync call failed:', e);
@@ -184,14 +223,14 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
     try {
       let partner: any = null;
-
+      
       if (cachedChatData) {
         const conversation = cachedChatData.originalData as Conversation;
         partner = conversation?.participants?.find(
           (p: any) => Number(p.id) !== Number(currentUser?.id)
         );
       }
-
+      
       if (!partner) {
         const { data } = await axiosMessenger.get<Conversation>(`/conversations/${chatId}`);
         partner = data.participants?.find((p: any) => Number(p.id) !== Number(currentUser?.id));
@@ -213,8 +252,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
       console.log('✅ Call created:', response.data);
 
-      // Если собеседник оффлайн (нет ни одного живого WS-соединения) —
-      // предупреждаем сразу, чтобы не ждать 15 секунд гудков впустую.
       if (response.data?.receiver_online === false) {
         toast('Собеседник не в сети — звонок, скорее всего, не пройдёт', {
           icon: '📴',
@@ -222,8 +259,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         });
       }
 
-      // Модалку откроет GlobalCallLayer. Передаём готовый промис медиа,
-      // чтобы CallModal не запрашивал его повторно вне жеста.
       window.dispatchEvent(
         new CustomEvent('open-call-modal', {
           detail: {
@@ -238,8 +273,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       );
     } catch (error: any) {
       console.error('Failed to initiate call:', error);
-      // Показываем реальную причину с бэкенда (например, 409/403),
-      // а не глухое "Не удалось начать звонок".
       const serverMsg = error?.response?.data?.error;
       if (serverMsg) {
         toast.error(serverMsg);
@@ -252,7 +285,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     }
   };
 
-  // Освобождаем медиа, если звонок так и не стартовал
   const releaseStream = async (promise?: Promise<MediaStream>) => {
     if (!promise) return;
     const stream = await promise.catch(() => null);
@@ -262,7 +294,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   return (
     <>
       <div className="h-16 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-6 bg-white dark:bg-gray-900 shadow-sm flex-shrink-0">
-        <div className="flex items-center gap-3">
+        <div 
+          className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg p-2 -m-2 transition-colors"
+          onClick={() => setShowInfoModal(true)}
+        >
           <div className="relative">
             <div
               className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold overflow-hidden ${
@@ -277,12 +312,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                 <span className="text-lg">{title[0]?.toUpperCase() || '?'}</span>
               )}
             </div>
-
             {chatType === 'dm' && isOnline && !loading && (
               <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
             )}
           </div>
-
           <div>
             <div className="flex items-center gap-2">
               {chatType === 'group' && <UsersIcon size={14} className="text-gray-500" />}
@@ -324,14 +357,12 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               </button>
             </>
           )}
-
           <button
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
             title="Поиск"
           >
             <Search size={20} />
           </button>
-
           <button
             onClick={togglePinned}
             disabled={loading}
@@ -344,7 +375,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           >
             <Pin size={20} />
           </button>
-
           <button
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
             title="Настройки"
@@ -353,6 +383,53 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           </button>
         </div>
       </div>
+
+      {/* ═══ ПАНЕЛЬ: сообщения, на которые дан ответ ═══ */}
+      {showReplySources && (
+        <div className="bg-blue-50 dark:bg-gray-800 border-b border-blue-100 dark:border-gray-700 animate-slideDown">
+          <div className="px-6 py-3 flex items-start justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-2">
+                <Reply size={14} className="text-blue-600 flex-shrink-0" />
+                <h4 className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                  Сообщения, на которые дан ответ ({replySources.length})
+                </h4>
+              </div>
+              <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                {replySources.map((msg) => (
+                  <div
+                    key={msg.id}
+                    onClick={() => {
+                      // переносим чат к этому сообщению и подсвечиваем
+                      window.dispatchEvent(
+                        new CustomEvent('scroll-to-message', { detail: { message_id: msg.id } })
+                      );
+                      setShowReplySources(false);
+                    }}
+                    className="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-sm cursor-pointer hover:shadow-md hover:bg-blue-50 dark:hover:bg-gray-600 transition-all"
+                    title="Перейти к сообщению"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                        {msg.sender_username}
+                      </p>
+                      <p className="text-sm text-gray-900 dark:text-white line-clamp-2 break-words">
+                        {msg.content || '📎 Вложение'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={() => setShowReplySources(false)}
+              className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors ml-2"
+            >
+              <X size={16} className="text-gray-500" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {showPinned && (
         <div className="bg-blue-50 dark:bg-gray-800 border-b border-blue-100 dark:border-gray-700 animate-slideDown">
@@ -364,7 +441,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                   Закрепленные сообщения ({pinnedMessages.length})
                 </h4>
               </div>
-
               {loadingPinned ? (
                 <div className="text-sm text-gray-500">Загрузка...</div>
               ) : pinnedMessages.length === 0 ? (
@@ -374,7 +450,15 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                   {pinnedMessages.map((msg) => (
                     <div
                       key={msg.id}
-                      className="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => {
+                        // переносим чат к этому сообщению и подсвечиваем (flashTarget в ChatArea)
+                        window.dispatchEvent(
+                          new CustomEvent('scroll-to-message', { detail: { message_id: msg.id } })
+                        );
+                        setShowPinned(false);
+                      }}
+                      className="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-sm cursor-pointer hover:shadow-md hover:bg-blue-50 dark:hover:bg-gray-600 transition-all"
+                      title="Перейти к сообщению"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
@@ -386,7 +470,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                           </p>
                         </div>
                         <span className="text-[10px] text-gray-400 flex-shrink-0">
-                          {new Date(msg.created_at).toLocaleDateString('ru-RU')}
+                          {msg.created_at ? new Date(msg.created_at).toLocaleDateString('ru-RU') : ''}
                         </span>
                       </div>
                     </div>
@@ -394,7 +478,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                 </div>
               )}
             </div>
-
             <button
               onClick={() => setShowPinned(false)}
               className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors ml-2"
@@ -404,6 +487,15 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           </div>
         </div>
       )}
+
+      <ChatInfoModal
+        open={showInfoModal}
+        chatId={chatId}
+        chatType={chatType}
+        currentUser={currentUser}
+        onClose={() => setShowInfoModal(false)}
+        onUpdated={handleInfoUpdated}
+      />
     </>
   );
 };

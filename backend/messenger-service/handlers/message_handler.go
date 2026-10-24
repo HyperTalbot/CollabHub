@@ -6,6 +6,7 @@ import (
 	"backend/messenger-service/ws"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -63,6 +65,18 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 	if input.ConversationID == nil && input.GroupID == nil && input.ChannelID == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "conversation_id, group_id or channel_id required"})
 		return
+	}
+
+	// ═══ НОВОЕ: проверка членства в группе (удалённый участник не может писать) ═══
+	if input.GroupID != nil {
+		var isMember int64
+		h.DB.Model(&models.GroupMember{}).
+			Where("group_id = ? AND user_id = ?", *input.GroupID, userID).
+			Count(&isMember)
+		if isMember == 0 {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You are not a member of this group"})
+			return
+		}
 	}
 
 	// Разбиваем длинные сообщения на части
@@ -159,6 +173,19 @@ func (h *MessageHandler) EditMessage(c *gin.Context) {
 		return
 	}
 
+	if strings.TrimSpace(input.Content) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Content cannot be empty"})
+		return
+	}
+
+	// ═══ НОВОЕ: жёсткий лимит длины при редактировании ═══
+	if utf8.RuneCountInString(input.Content) > MAX_MESSAGE_LENGTH {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("Message exceeds %d characters", MAX_MESSAGE_LENGTH),
+		})
+		return
+	}
+
 	var msg models.Message
 	if err := h.DB.First(&msg, msgID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Message not found"})
@@ -174,18 +201,28 @@ func (h *MessageHandler) EditMessage(c *gin.Context) {
 		"content":   input.Content,
 		"is_edited": true,
 	})
+	msg.Content = input.Content
+	msg.IsEdited = true
 
-	// WS Event
-	if msg.ConversationID != nil {
-		h.broadcastToConversation(*msg.ConversationID, map[string]interface{}{
-			"type": "message_updated",
-			"payload": map[string]interface{}{
-				"id":              msg.ID,
-				"conversation_id": msg.ConversationID,
-				"content":         input.Content,
-				"is_edited":       true,
-			},
-		})
+	// WS Event — рассылка для ЛС, ГРУПП и КАНАЛОВ (раньше было только для ЛС)
+	wsPayload := map[string]interface{}{
+		"type": "message_updated",
+		"payload": map[string]interface{}{
+			"id":              msg.ID,
+			"conversation_id": msg.ConversationID,
+			"group_id":        msg.GroupID,
+			"channel_id":      msg.ChannelID,
+			"content":         input.Content,
+			"is_edited":       true,
+		},
+	}
+	switch {
+	case msg.ConversationID != nil:
+		h.broadcastToConversation(*msg.ConversationID, wsPayload)
+	case msg.GroupID != nil:
+		h.broadcastToGroup(*msg.GroupID, wsPayload)
+	case msg.ChannelID != nil:
+		h.broadcastToChannel(*msg.ChannelID, wsPayload)
 	}
 
 	c.JSON(http.StatusOK, msg)
@@ -207,18 +244,25 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 		return
 	}
 
-	convID := msg.ConversationID
 	h.DB.Delete(&msg)
 
-	// WS Event
-	if convID != nil {
-		h.broadcastToConversation(*convID, map[string]interface{}{
-			"type": "message_deleted",
-			"payload": map[string]interface{}{
-				"id":              msg.ID,
-				"conversation_id": convID,
-			},
-		})
+	// WS Event — рассылка для ЛС, ГРУПП и КАНАЛОВ (раньше было только для ЛС)
+	wsPayload := map[string]interface{}{
+		"type": "message_deleted",
+		"payload": map[string]interface{}{
+			"id":              msg.ID,
+			"conversation_id": msg.ConversationID,
+			"group_id":        msg.GroupID,
+			"channel_id":      msg.ChannelID,
+		},
+	}
+	switch {
+	case msg.ConversationID != nil:
+		h.broadcastToConversation(*msg.ConversationID, wsPayload)
+	case msg.GroupID != nil:
+		h.broadcastToGroup(*msg.GroupID, wsPayload)
+	case msg.ChannelID != nil:
+		h.broadcastToChannel(*msg.ChannelID, wsPayload)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
@@ -227,7 +271,7 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 // 4. Закрепление (Pin)
 func (h *MessageHandler) PinMessage(c *gin.Context) {
 	msgID := c.Param("id")
-	// userID := c.GetUint("user_id")
+	userID := c.GetUint("user_id")
 
 	var msg models.Message
 	if err := h.DB.First(&msg, msgID).Error; err != nil {
@@ -238,6 +282,43 @@ func (h *MessageHandler) PinMessage(c *gin.Context) {
 	// Переключаем статус закрепления
 	newStatus := !msg.IsPinned
 	h.DB.Model(&msg).Update("is_pinned", newStatus)
+
+	// ═══ СИНХРОНИЗАЦИЯ с таблицей pinned_messages ═══
+	// ChatHeader читает закреплённые через GET /pinned (таблица pinned_messages),
+	// а флаг is_pinned живёт в messages. Без этой синхронизации значок в чате
+	// есть, а header пишет «Нет закрепленных сообщений».
+
+	// ВАЖНО: Unpin делает soft-delete, а уникальный индекс idx_pinned_message
+	// включает soft-deleted строки → повторный Create падал с SQLSTATE 23505.
+	// Поэтому ищем через Unscoped и «воскрешаем» запись вместо вставки.
+	if newStatus {
+		var cnt int64
+		h.DB.Unscoped().Model(&models.PinnedMessage{}).
+			Where("message_id = ?", msg.ID).Count(&cnt)
+		if cnt > 0 {
+			h.DB.Unscoped().Model(&models.PinnedMessage{}).
+				Where("message_id = ?", msg.ID).
+				Updates(map[string]interface{}{
+					"deleted_at":        nil,
+					"pinned_at":         time.Now(),
+					"pinned_by_user_id": userID,
+					"conversation_id":   msg.ConversationID,
+					"group_id":          msg.GroupID,
+					"channel_id":        msg.ChannelID,
+				})
+		} else {
+			h.DB.Create(&models.PinnedMessage{
+				MessageID:      msg.ID,
+				ConversationID: msg.ConversationID,
+				GroupID:        msg.GroupID,
+				ChannelID:      msg.ChannelID,
+				PinnedByUserID: userID,
+				PinnedAt:       time.Now(),
+			})
+		}
+	} else {
+		h.DB.Where("message_id = ?", msg.ID).Delete(&models.PinnedMessage{})
+	}
 
 	// WS Event
 	var recipients []uint

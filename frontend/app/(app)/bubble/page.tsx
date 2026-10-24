@@ -132,58 +132,73 @@ export default function MessengerPage() {
     ));
   };
 
-  useEffect(() => {
-    if (!selectedChatId || !selectedChatType) return;
-    
-    setActiveChatMessages([]);
-    setHasMore(true);
+  // Пометить чат прочитанным на бэкенде
+	const markChatRead = async (id: number, type: 'dm' | 'group', messageId?: number) => {
+		const token = Cookies.get('authToken') || localStorage.getItem('authToken');
+		const readEndpoint = type === 'dm'
+			? `/conversations/${id}/read`
+			: `/groups/${id}/read`;
+		try {
+			await axios.post(
+				`${MESSENGER_API_URL}${readEndpoint}`,
+				messageId ? { message_id: messageId } : {},
+				{ headers: { 'Authorization': `Bearer ${token}` } }
+			);
+		} catch (e) {
+			console.error('mark read failed', e);
+		}
+	};
 
-    const fetchHistory = async () => {
-      const token = Cookies.get('authToken') || localStorage.getItem('authToken');
-      const endpoint = selectedChatType === 'dm' 
-        ? `/conversations/${selectedChatId}/messages`
-        : `/groups/${selectedChatId}/messages`;
+  // Вызывается из ChatArea, когда пользователь РЕАЛЬНО УВИДЕЛ сообщение.
+	// cid/ctype передаются явно: пометка может прийти уже после переключения
+	// на другой чат (flush отложенного таймера) — важно не перепутать чат.
+	const handleMarkRead = async (messageId: number, cid?: number, ctype?: 'dm' | 'group') => {
+		const id = cid ?? selectedChatId;
+		const type = ctype ?? selectedChatType;
+		if (!id || !type) return;
+		markChatRead(id, type, messageId);
+	};
 
-      try {
-        const res = await axios.get(`${MESSENGER_API_URL}${endpoint}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        setActiveChatMessages(res.data.messages || []);
-        setStoredLastReadId(Number(res.data.last_read_message_id) || 0);
-        
-        const readEndpoint = selectedChatType === 'dm'
-          ? `/conversations/${selectedChatId}/read`
-          : `/groups/${selectedChatId}/read`;
-          
-        await axios.post(`${MESSENGER_API_URL}${readEndpoint}`, {}, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-      } catch (e) { 
-        console.error(e); 
-      }
-    };
-    
-    fetchHistory();
-  }, [selectedChatId, selectedChatType]);
 
   useEffect(() => {
-    if (!lastJsonMessage) return;
-    
-    const msgPayload = (lastJsonMessage as any).payload || lastJsonMessage;
+		if (!selectedChatId || !selectedChatType) return;
+		setActiveChatMessages([]);
+		setHasMore(true);
+		setStoredLastReadId(0);
+		const fetchHistory = async () => {
+			const token = Cookies.get('authToken') || localStorage.getItem('authToken');
+			const endpoint = selectedChatType === 'dm'
+				? `/conversations/${selectedChatId}/messages`
+				: `/groups/${selectedChatId}/messages`;
+			try {
+				const res = await axios.get(`${MESSENGER_API_URL}${endpoint}`, {
+					headers: { 'Authorization': `Bearer ${token}` }
+				});
+				setActiveChatMessages(res.data.messages || []);
+				setStoredLastReadId(Number(res.data.last_read_message_id) || 0);
+				// БОЛЬШЕ НЕ помечаем всё прочитанным при открытии —
+				// только когда пользователь реально увидит сообщения (трекер в ChatArea)
+			} catch (e) {
+				console.error(e);
+			}
+		};
+		fetchHistory();
+	}, [selectedChatId, selectedChatType]);
 
-    const msgChatId = msgPayload.conversation_id || msgPayload.group_id;
-    const msgType = msgPayload.group_id ? 'group' : 'dm';
+  useEffect(() => {
+		if (!lastJsonMessage) return;
+		const msgPayload = (lastJsonMessage as any).payload || lastJsonMessage;
+		const msgChatId = msgPayload.conversation_id || msgPayload.group_id;
+		const msgType = msgPayload.group_id ? 'group' : 'dm';
 
-    console.log('📨 New message received:', msgPayload);
-
-    // Обновляем сообщения в активном чате
-    if (selectedChatId === msgChatId && selectedChatType === msgType) {
-      setActiveChatMessages(prev => {
-        if (prev.some(m => m.id === msgPayload.id)) return prev;
-        return [...prev, msgPayload];
-      });
-    }
+		if (selectedChatId === msgChatId && selectedChatType === msgType) {
+			setActiveChatMessages(prev => {
+				if (prev.some(m => m.id === msgPayload.id)) return prev;
+				return [...prev, msgPayload];
+			});
+			// БЕЗ автопометки: именно она сдвигала last_read на предпоследнее
+			// сообщение, из-за чего плашка вставала только у последнего
+		}
 
     // ИСПРАВЛЕНО: Обновляем список чатов ВСЕГДА
     setChatList(prev => {
@@ -212,11 +227,90 @@ export default function MessengerPage() {
     });
   }, [lastJsonMessage, selectedChatId, selectedChatType]);
 
+  
 
-  const handleSendMessage = async (text: string, replyToId?: number, files?: File[]) => {
+  // ═══ НОВОЕ: live-обновления сообщений из WebSocket ═══
+	useEffect(() => {
+		const onMessageUpdated = (e: Event) => {
+			const p = (e as CustomEvent).detail;
+			setActiveChatMessages(prev => prev.map(m =>
+				m.id === p.id ? { ...m, content: p.content, is_edited: true } : m
+			));
+		};
+		const onMessageDeleted = (e: Event) => {
+			const p = (e as CustomEvent).detail;
+			setActiveChatMessages(prev => prev.filter(m => m.id !== p.id));
+		};
+		const onMessagePinned = (e: Event) => {
+			const p = (e as CustomEvent).detail;
+			setActiveChatMessages(prev => prev.map(m =>
+				m.id === p.message_id ? { ...m, is_pinned: p.is_pinned } : m
+			));
+		};
+
+		window.addEventListener('message-updated', onMessageUpdated);
+		window.addEventListener('message-deleted', onMessageDeleted);
+		window.addEventListener('message-pinned', onMessagePinned);
+		return () => {
+			window.removeEventListener('message-updated', onMessageUpdated);
+			window.removeEventListener('message-deleted', onMessageDeleted);
+			window.removeEventListener('message-pinned', onMessagePinned);
+		};
+	}, []);
+
+	// ═══ НОВОЕ: закрепление сообщения (toggle) ═══
+	const handlePinMessage = async (msgId: number) => {
+		const token = Cookies.get('authToken') || localStorage.getItem('authToken');
+		try {
+			await axios.post(`${MESSENGER_API_URL}/messages/${msgId}/pin`, {}, {
+				headers: { 'Authorization': `Bearer ${token}` }
+			});
+			// Список обновится через WS-событие message_pinned
+		} catch (e) {
+			console.error('Pin error:', e);
+			toast.error('Не удалось закрепить сообщение');
+		}
+	};
+
+  // ═══ НОВОЕ: пользователь покинул группу или был удалён из неё ═══
+	// Если эта группа сейчас открыта — закрываем чат и обновляем список
+	useEffect(() => {
+		const onGroupLeft = (e: Event) => {
+			const gid = Number((e as CustomEvent).detail?.group_id);
+			if (!gid) return;
+			if (selectedChatType === 'group' && Number(selectedChatId) === gid) {
+				setSelectedChatId(null);
+				setSelectedChatType(null);
+			}
+			refreshData();
+		};
+		window.addEventListener('group-left', onGroupLeft);
+		return () => window.removeEventListener('group-left', onGroupLeft);
+	}, [selectedChatId, selectedChatType]);
+
+  // собеседник прочитал сообщения → меняем ✓ на ✓✓ у своих ═══
+	useEffect(() => {
+		const onMessagesRead = (e: Event) => {
+			const d = (e as CustomEvent).detail || {};
+			const evtChatId = Number(d.conversation_id || d.group_id);
+			const evtType = d.group_id ? 'group' : 'dm';
+			if (evtChatId !== Number(selectedChatId) || evtType !== selectedChatType) return;
+			const lastRead = Number(d.last_read_message_id) || 0;
+			setActiveChatMessages(prev => prev.map(m =>
+				Number(m.sender_id) === Number(currentUser?.id) && m.id <= lastRead
+					? { ...m, is_read_by_recipient: true }
+					: m
+			));
+		};
+		window.addEventListener('messages-read', onMessagesRead);
+		return () => window.removeEventListener('messages-read', onMessagesRead);
+	}, [selectedChatId, selectedChatType, currentUser]);
+
+  const handleSendMessage = async (text: string, replyToId?: number, files?: File[], replyToIds?: number[]) => {
     if (!selectedChatId || !selectedChatType) return;
-    
-    // Если есть файлы - отправляем через API
+    if (!text.trim() && (!files || files.length === 0)) return;
+
+    // Если есть файлы - отправляем через REST API (attachment)
     if (files && files.length > 0) {
       for (const file of files) {
         const formData = new FormData();
@@ -230,27 +324,115 @@ export default function MessengerPage() {
           });
         } catch (error) {
           console.error('File upload error:', error);
+          toast.error('Не удалось отправить файл');
         }
       }
       return;
     }
 
-    // Разбиваем текст на чанки
-    const chunks = [];
+    // Разбиваем текст на чанки по MAX_MESSAGE_LENGTH (4096)
+    const chunks: string[] = [];
     for (let i = 0; i < text.length; i += MAX_MESSAGE_LENGTH) {
       chunks.push(text.substring(i, i + MAX_MESSAGE_LENGTH));
     }
 
-    for (const chunk of chunks) {
+    // Отправляем чанки через WebSocket
+    for (let idx = 0; idx < chunks.length; idx++) {
+      const chunk = chunks[idx];
       const payload: any = { content: chunk };
-      if (replyToId) payload.reply_to_id = replyToId;
       if (selectedChatType === 'dm') payload.conversation_id = selectedChatId;
-      if (selectedChatType === 'group') payload.group_id = selectedChatId;
-      
+      else payload.group_id = selectedChatId;
+
+      // Ответ прикрепляем только к первому чанку,
+      // чтобы блок «Ответ» не дублировался у каждой части
+      if (idx === 0) {
+        if (replyToId) payload.reply_to_id = replyToId;
+        if (replyToIds && replyToIds.length > 1) payload.reply_to_ids = replyToIds;
+      }
+
       sendMessage(payload, chunk);
       await new Promise(r => setTimeout(r, 50));
     }
   };
+
+  // ═══ НОВОЕ: ПЕРЕСЫЛКА СООБЩЕНИЯ ═══
+	// Для каждого выбранного чата отправляем через WS:
+	// 1) само сообщение (с forwarded_from + вложением, если было)
+	// 2) комментарий отдельным сообщением (если указан)
+	// теперь поддерживает МАССИВ сообщений (мультивыбор)
+	const handleForwardMessage = async (
+		message: Message | Message[],
+		targets: { id: number; type: 'dm' | 'group' }[],
+		comment?: string,
+		showSender?: boolean
+	) => {
+		const list = Array.isArray(message) ? message : [message];
+		if (list.length === 0) return;
+		try {
+			for (const t of targets) {
+				for (const m of list) {
+					const payload: any = { content: m.content || '' };
+					if (t.type === 'dm') payload.conversation_id = t.id;
+					else payload.group_id = t.id;
+					if (showSender !== false) payload.forwarded_from = m.sender_id;
+					if (m.attachment_url) {
+						payload.attachment_url = m.attachment_url;
+						payload.attachment_type = m.attachment_type;
+					}
+					sendMessage(payload, m.content || 'вложение');
+					await new Promise(r => setTimeout(r, 80));
+				}
+				if (comment && comment.trim()) {
+					const commentPayload: any = { content: comment.trim() };
+					if (t.type === 'dm') commentPayload.conversation_id = t.id;
+					else commentPayload.group_id = t.id;
+					sendMessage(commentPayload, comment.trim());
+					await new Promise(r => setTimeout(r, 80));
+				}
+			}
+			toast.success(`Переслано в чатов: ${targets.length}`);
+		} catch (e) {
+			console.error('Forward error:', e);
+			toast.error('Не удалось переслать сообщение');
+		}
+	};
+
+	// ═══ НОВОЕ: РЕДАКТИРОВАНИЕ СООБЩЕНИЯ ═══
+	const handleEditMessage = async (messageId: number, newContent: string) => {
+		const token = Cookies.get('authToken') || localStorage.getItem('authToken');
+		try {
+			await axios.put(
+				`${MESSENGER_API_URL}/messages/${messageId}/edit`,
+				{ content: newContent },
+				{ headers: { 'Authorization': `Bearer ${token}` } }
+			);
+			// Локально обновляем (у других участников обновится через WS message_edited,
+			// если бэкенд его рассылает)
+			setActiveChatMessages(prev => prev.map(m =>
+				m.id === messageId ? { ...m, content: newContent, is_edited: true } : m
+			));
+			toast.success('Сообщение изменено');
+		} catch (e: any) {
+			console.error('Edit error:', e);
+			toast.error(e?.response?.data?.error || 'Не удалось изменить сообщение');
+		}
+	};
+
+	// ═══ НОВОЕ: УДАЛЕНИЕ СООБЩЕНИЯ ═══
+	const handleDeleteMessage = async (messageId: number, deleteForBoth: boolean) => {
+		const token = Cookies.get('authToken') || localStorage.getItem('authToken');
+		try {
+			await axios.delete(`${MESSENGER_API_URL}/messages/${messageId}/delete`, {
+				headers: { 'Authorization': `Bearer ${token}` },
+				data: { delete_for_both: deleteForBoth }
+			});
+			setActiveChatMessages(prev => prev.filter(m => m.id !== messageId));
+			toast.success('Сообщение удалено');
+		} catch (e: any) {
+			console.error('Delete error:', e);
+			toast.error(e?.response?.data?.error || 'Не удалось удалить сообщение');
+		}
+	};
 
   const handleCreated = async () => {
     await refreshData();
@@ -388,19 +570,24 @@ export default function MessengerPage() {
 
             {activeView === 'dm' ? (
             selectedChatId && selectedChatType ? (
-                <ChatArea
+              <ChatArea
                 chatId={selectedChatId}
                 chatType={selectedChatType}
                 messages={activeChatMessages}
                 currentUser={currentUser}
                 storedLastReadId={storedLastReadId}
                 onSendMessage={handleSendMessage}
+                onPinMessage={handlePinMessage}
+                onForwardMessage={handleForwardMessage}
+                onEditMessage={handleEditMessage}
+                onDeleteMessage={handleDeleteMessage}
+                onMarkRead={handleMarkRead}
                 isSidebarOpen={isSidebarVisible}
                 onToggleSidebar={() => setIsSidebarVisible(!isSidebarVisible)}
                 onLoadMore={handleLoadMore}
                 hasMore={hasMore}
                 isLoadingMessages={isFetchingMore}
-                />
+						  />
             ) : (
                 <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 relative">
                 {!isSidebarVisible && (

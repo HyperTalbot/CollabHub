@@ -21,10 +21,10 @@ services:
       - --listening-port=3478
       # Публичный IP сервера (узнать на сервере: `curl -4 ifconfig.me`).
       # Если публичный IP висит прямо на интерфейсе — указать его явно не вредно.
-      - --external-ip=${TURN_EXTERNAL_IP}
+      - --external-ip=5.188.75.162
       - --fingerprint
       - --lt-cred-mech
-      - --user=collabhub:SuperSecretChangeMe2024
+      - --user=collabhub:${TURN_PASSWORD}
       - --realm=collabhub.cloudpub.ru
       - --min-port=49152
       - --max-port=49200
@@ -41,36 +41,3 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-
-
-
-
-# services:
-#   coturn:
-#     image: coturn/coturn:latest
-#     container_name: coturn
-#     restart: unless-stopped
-#     network_mode: host
-#     command:
-#       - -n
-#       - --log-file=stdout
-#       - --external-ip=$(EXTERNAL_IP)
-#       - --relay-ip=$(INTERNAL_IP)
-#       - --listening-port=3478
-#       - --tls-listening-port=5349
-#       - --fingerprint
-#       - --lt-cred-mech
-#       - --user=collabhub:SuperSecretChangeMe2024
-#       - --realm=turn.collab-hub.local
-#       - --total-quota=100
-#       - --bps-capacity=0
-#       - --stale-nonce=600
-#       - --no-tcp-relay
-#       - --min-port=49152
-#       - --max-port=49200
-#       - --no-multicast-peers
-#       - --deny-peer-shared-ip
-#     environment:
-#       - EXTERNAL_IP=${TURN_EXTERNAL_IP:-127.0.0.1}
-#       - INTERNAL_IP=${TURN_INTERNAL_IP:-127.0.0.1}

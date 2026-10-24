@@ -403,7 +403,14 @@ func classifyMessage(m models.Message, senderName string) (folder string, item c
 	case "file":
 		item.Type = "file"
 		item.URL = m.AttachmentURL
-		item.FileName = extractFileName(m.AttachmentURL)
+		// ОРИГИНАЛЬНОЕ имя файла: SendAttachment пишет file.Filename в Content.
+		// Из URL берём только как fallback — там имя, сгенерированное
+		// media-service (1792248822_6_589487b9.txt).
+		if strings.TrimSpace(m.Content) != "" {
+			item.FileName = strings.TrimSpace(m.Content)
+		} else {
+			item.FileName = extractFileName(m.AttachmentURL)
+		}
 		return "files", item, true
 	}
 
@@ -485,6 +492,43 @@ func (h *ChatInfoHandler) GetChatInfo(c *gin.Context) {
 	id, err := strconv.ParseUint(chatID, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid chat id"})
+		return
+	}
+
+	// ─── НОВОЕ: РЕЖИМ "user" — информация о пользователе по user_id ───
+	// Используется при клике на участника группы / аватар отправителя в чате.
+	// :id здесь — это USER ID (не conversation id).
+	if chatType == "user" {
+		targetID := uint(id)
+
+		partner := h.resolveUserDetails(targetID)
+
+		// Ищем существующий DM-conversation между мной и этим пользователем,
+		// чтобы показать общий медиа-контент (если чата нет — папки пустые)
+		var convIDs []uint
+		h.DB.Table("conversation_participants AS cp1").
+			Select("cp1.conversation_id").
+			Joins("JOIN conversation_participants cp2 ON cp2.conversation_id = cp1.conversation_id").
+			Where("cp1.user_id = ? AND cp2.user_id = ?", userID, targetID).
+			Limit(1).
+			Scan(&convIDs)
+
+		var res *chatInfoResponse
+		if len(convIDs) > 0 {
+			res = h.buildResponse(h.loadMessages("conversation_id", convIDs[0]))
+			res.ID = convIDs[0]
+		} else {
+			res = h.buildResponse(nil)
+			res.ID = targetID
+		}
+
+		res.Type = "user"
+		res.Title = partner.DisplayName
+		res.AvatarURL = partner.AvatarURL
+		res.User = &partner
+		res.MemberCount = 0
+
+		c.JSON(http.StatusOK, res)
 		return
 	}
 

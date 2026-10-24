@@ -2,6 +2,7 @@
 
 export interface User {
   id: number;
+  display_name?: string;
   username: string;
   email?: string;
   avatar_url?: string;
@@ -22,19 +23,33 @@ export interface User {
 //   created_at?: string;
 // }
 
+
 export interface Message {
   id: number;
-  conversation_id: number;
+  conversation_id?: number;
+  group_id?: number;
   sender_id: number;
-  sender_avatar: string | undefined;
-  sender_username: string | undefined;
-  sender?: User;
+  sender_avatar?: string;
+  sender_username?: string;
+  sender?: {
+    id: number;
+    username: string;
+    display_name?: string;
+    avatar_url?: string;
+  };
   content: string;
   created_at: string;
   updated_at?: string;
   reply_to_id?: number; // ID сообщения на которое отвечают
+  reply_preview?: ReplyPreview;
+  // мультивыбор — ответ на несколько сообщений
+  reply_to_ids?: number[] | string; // WS присылает массив, REST-история — CSV-строку
+  reply_previews?: ReplyPreview[];  
+  forwarded_from?: number;
+  forwarded_from_name?: string;
   is_edited?: boolean;
   is_pinned?: boolean;
+  is_read_by_recipient?: boolean; // прочитано ли моё сообщение получателем (✓ / ✓✓)
 
   // Поля для вложений
   attachment_url?: string;
@@ -113,4 +128,12 @@ export interface PinnedMessage {
   created_at: string;
   pinned_at: string;
   pinned_by_user_id: number;
+}
+
+export interface ReplyPreview {
+  id: number;
+  content: string;
+  sender_id: number;
+  sender_username?: string;
+  attachment_type?: string;
 }

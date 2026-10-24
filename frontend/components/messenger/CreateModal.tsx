@@ -28,8 +28,10 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
 
     // Данные форм
     const [groupName, setGroupName] = useState('');
-    const [groupAvatar, setGroupAvatar] = useState<string>(''); // ДОБАВЛЕНО
-    const [groupAvatarFile, setGroupAvatarFile] = useState<File | null>(null); // ДОБАВЛЕНО
+    const [groupAvatar, setGroupAvatar] = useState<string>(''); 
+    const [groupAvatarFile, setGroupAvatarFile] = useState<File | null>(null); 
+    const [serverAvatar, setServerAvatar] = useState<string>('');
+    const [serverAvatarFile, setServerAvatarFile] = useState<File | null>(null);
     const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
     const [contacts, setContacts] = useState<Contact[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -38,7 +40,8 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
     const [serverDesc, setServerDesc] = useState('');
     const [serverTags, setServerTags] = useState('');
 
-    const fileInputRef = useRef<HTMLInputElement>(null); // ДОБАВЛЕНО
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const serverFileInputRef = useRef<HTMLInputElement>(null);
 
     // Загрузка контактов
     useEffect(() => {
@@ -78,8 +81,10 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
     const handleClose = () => {
         setStep('choice');
         setGroupName('');
-        setGroupAvatar(''); // ДОБАВЛЕНО
-        setGroupAvatarFile(null); // ДОБАВЛЕНО
+        setGroupAvatar(''); 
+        setGroupAvatarFile(null); 
+        setServerAvatar('');
+        setServerAvatarFile(null);
         setSelectedMembers([]);
         setSearchTerm('');
         setServerName('');
@@ -96,7 +101,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
         );
     };
 
-    // ДОБАВЛЕНО: Обработка выбора аватарки
+    // Обработка выбора аватарки
     const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -123,7 +128,25 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
         reader.readAsDataURL(file);
     };
 
-    // Создание Группы (ОБНОВЛЕНО)
+    // Обработка выбора аватарки сервера
+    const handleServerAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error('Файл слишком большой. Максимум 5МБ');
+            return;
+        }
+        if (!file.type.startsWith('image/')) {
+            toast.error('Можно загружать только изображения');
+            return;
+        }
+        setServerAvatarFile(file);
+        const reader = new FileReader();
+        reader.onload = (ev) => setServerAvatar(ev.target?.result as string);
+        reader.readAsDataURL(file);
+    };
+
+    // Создание Группы
     const handleCreateGroup = async () => {
         if (!groupName.trim()) {
             toast.error('Введите название группы');
@@ -163,18 +186,25 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
         }
     };
 
-    // Создание Сервера
+    // Создание Сервера (ОБНОВЛЕНО: загрузка аватарки)
     const handleCreateServer = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!serverName.trim()) return;
         setLoading(true);
         const token = Cookies.get('authToken') || localStorage.getItem('authToken');
-        
         try {
+            let avatarUrl = '';
+            if (serverAvatarFile) {
+                toast.loading('Загрузка изображения...', { id: 'upload-server' });
+                avatarUrl = await uploadFile(serverAvatarFile, 'avatar');
+                toast.success('Изображение загружено', { id: 'upload-server' });
+            }
+
             const serverRes = await axiosMessenger.post('/servers', {
                 name: serverName,
                 description: serverDesc,
-                tags: serverTags
+                tags: serverTags,
+                avatar_url: avatarUrl
             }, { headers: { 'Authorization': `Bearer ${token}` } });
 
             const newServerId = serverRes.data.id;
@@ -227,7 +257,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
             case 'group':
                 return (
                     <div className="mt-4 space-y-4">
-                        {/* ДОБАВЛЕНО: Загрузка аватарки */}
+                        {/* Загрузка аватарки группы */}
                         <div className="flex justify-center mb-6">
                             <input
                                 ref={fileInputRef}
@@ -242,11 +272,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
                             >
                                 {groupAvatar ? (
                                     <>
-                                        <img 
-                                            src={groupAvatar} 
-                                            alt="Group avatar" 
-                                            className="w-full h-full object-cover"
-                                        />
+                                        <img src={groupAvatar} alt="Group avatar" className="w-full h-full object-cover" />
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                             <Camera size={24} className="text-white" />
                                         </div>
@@ -254,12 +280,11 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
                                 ) : (
                                     <div className="text-center">
                                         <Upload size={24} className="text-gray-400 mx-auto mb-1" />
-                                        <span className="text-xs text-gray-500">Добавить фото</span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-300">Добавить фото</span>
                                     </div>
                                 )}
                             </div>
                         </div>
-
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Название группы</label>
                             <input
@@ -267,14 +292,13 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
                                 value={groupName}
                                 onChange={e => setGroupName(e.target.value)}
                                 placeholder="Например: Друзья"
-                                className="w-full p-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                className="w-full p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                 required
                                 autoFocus
                             />
                         </div>
-
                         <div className="flex justify-between items-center mt-8">
-                            <button type="button" onClick={() => setStep('choice')} className="text-sm text-gray-500 hover:text-gray-700">
+                            <button type="button" onClick={() => setStep('choice')} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
                                 ← Назад
                             </button>
                             <button
@@ -296,7 +320,6 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Добавить участников ({selectedMembers.length})
                             </label>
-                            
                             {/* Поиск */}
                             <div className="relative mb-3">
                                 <input
@@ -304,15 +327,14 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
                                     placeholder="Поиск контактов..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                    className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                 />
                                 <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
                             </div>
-
                             {/* Список контактов */}
-                            <div className="max-h-64 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+                            <div className="max-h-64 overflow-y-auto custom-scrollbar border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
                                 {filteredContacts.length === 0 ? (
-                                    <div className="p-4 text-center text-gray-500 text-sm">
+                                    <div className="p-4 text-center text-gray-500 dark:text-gray-400 text-sm">
                                         Контакты не найдены
                                     </div>
                                 ) : (
@@ -362,44 +384,67 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
             case 'server':
                 return (
                     <form onSubmit={handleCreateServer} className="mt-4 space-y-4">
+                        {/* ДОБАВЛЕНО: Загрузка аватарки сервера */}
                         <div className="flex justify-center mb-6">
-                            <div className="w-24 h-24 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center border-2 border-dashed border-gray-400 relative group">
-                                <Server size={32} className="text-gray-400" />
+                            <input
+                                ref={serverFileInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handleServerAvatarSelect}
+                                className="hidden"
+                            />
+                            <div
+                                onClick={() => serverFileInputRef.current?.click()}
+                                className="relative w-24 h-24 bg-gray-100 dark:bg-gray-700 rounded-[28px] flex items-center justify-center border-2 border-dashed border-gray-400 dark:border-gray-500 cursor-pointer hover:border-green-500 dark:hover:border-green-400 transition-colors group overflow-hidden"
+                            >
+                                {serverAvatar ? (
+                                    <>
+                                        <img src={serverAvatar} alt="Server avatar" className="w-full h-full object-cover" />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <Camera size={24} className="text-white" />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="text-center">
+                                        <Upload size={24} className="text-gray-400 mx-auto mb-1" />
+                                        <span className="text-xs text-gray-500 dark:text-gray-300">Аватар сервера</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Название сервера</label>
-                            <input 
-                                type="text" 
-                                value={serverName} 
-                                onChange={e => setServerName(e.target.value)} 
-                                placeholder="Например: Gaming Club" 
-                                className="w-full p-2.5 rounded-lg border bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                                required 
+                            <input
+                                type="text"
+                                value={serverName}
+                                onChange={e => setServerName(e.target.value)}
+                                placeholder="Например: Gaming Club"
+                                className="w-full p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+                                required
                                 autoFocus
                             />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание</label>
-                            <textarea 
-                                value={serverDesc} 
-                                onChange={e => setServerDesc(e.target.value)} 
-                                placeholder="О чем этот сервер?" 
-                                className="w-full p-2.5 rounded-lg border bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 h-20 resize-none" 
+                            <textarea
+                                value={serverDesc}
+                                onChange={e => setServerDesc(e.target.value)}
+                                placeholder="О чем этот сервер?"
+                                className="w-full p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 h-20 resize-none"
                             />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Хештеги</label>
-                            <input 
-                                type="text" 
-                                value={serverTags} 
-                                onChange={e => setServerTags(e.target.value)} 
-                                placeholder="gaming, news" 
-                                className="w-full p-2.5 rounded-lg border bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                            <input
+                                type="text"
+                                value={serverTags}
+                                onChange={e => setServerTags(e.target.value)}
+                                placeholder="gaming, news"
+                                className="w-full p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500"
                             />
                         </div>
                         <div className="flex justify-between items-center mt-8">
-                            <button type="button" onClick={() => setStep('choice')} className="text-sm text-gray-500 hover:text-gray-700">
+                            <button type="button" onClick={() => setStep('choice')} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
                                 ← Назад
                             </button>
                             <button 
@@ -417,15 +462,15 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn" onClick={handleClose}>
-            <div className="relative w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 m-4 animate-scaleIn" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-2">
-                    <h2 className="text-2xl font-bold text-black dark:text-white">
-                        {step === 'choice' ? 'Создать новое' :
-                         step === 'group' ? 'Новая группа' :
-                         step === 'group-members' ? 'Добавить участников' :
-                         'Новый сервер'}
+          <div className="relative w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 m-4 animate-scaleIn max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-2">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      {step === 'choice' ? 'Создать новое' :
+                          step === 'group' ? 'Новая группа' :
+                              step === 'group-members' ? 'Добавить участников' :
+                                  'Новый сервер'}
                     </h2>
-                    <button onClick={handleClose} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
+                    <button onClick={handleClose} className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
                         <X size={24} />
                     </button>
                 </div>

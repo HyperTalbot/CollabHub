@@ -42,7 +42,7 @@ export default function UserActionsDropdown({ targetUserId, currentUserId, usern
         { target_user_id: targetUserId },
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
-      router.push('/misable');
+      router.push('/bubble');
       toast.success(`Чат с ${username || 'пользователем'} успешно открыт!`);
     } catch (err: any) {
       console.error("Failed to start chat:", err);

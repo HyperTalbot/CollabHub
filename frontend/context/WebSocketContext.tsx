@@ -101,6 +101,8 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
         const msg = data.payload;
         setLastJsonMessage(msg);
 
+        window.dispatchEvent(new CustomEvent('ws-new-message', { detail: msg }));
+
         const currentUser = userRef.current;
         if (currentUser && Number(msg.sender_id) !== Number(currentUser.id)) {
           setTimeout(() => {
@@ -110,7 +112,7 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
                   className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-white dark:bg-gray-800 shadow-xl rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 cursor-pointer border-l-4 border-blue-500`}
                   onClick={() => {
                     toast.dismiss(t.id);
-                    window.location.href = '/misable';
+                    window.location.href = '/bubble';
                   }}
                 >
                   <div className="flex-1 w-0 p-4">
@@ -138,6 +140,51 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
         }
         break;
       }
+
+      case 'message_updated':
+        window.dispatchEvent(
+          new CustomEvent('message-updated', { detail: data.payload })
+        );
+        break;
+
+      case 'message_deleted':
+        window.dispatchEvent(
+          new CustomEvent('message-deleted', { detail: data.payload })
+        );
+        break;
+
+      case 'message_pinned':
+        window.dispatchEvent(
+          new CustomEvent('message-pinned', { detail: data.payload })
+        );
+        break;
+
+      // кто-то прочитал сообщения → обновляем галочки ✓✓ ═══
+      case 'messages_read':
+        window.dispatchEvent(
+          new CustomEvent('messages-read', { detail: data.payload })
+        );
+        break;
+
+      case 'group_updated':
+        window.dispatchEvent(
+          new CustomEvent('group-updated', { detail: data.payload })
+        );
+        break;
+
+      // пользователя удалили из группы 
+      case 'removed_from_group':
+        window.dispatchEvent(
+          new CustomEvent('removed-from-group', { detail: data.payload })
+        );
+        toast.error(`Вас удалили из группы «${data.payload?.group_name || ''}»`);
+        break;
+
+      case 'contact_updated':
+        window.dispatchEvent(
+          new CustomEvent('contact-updated', { detail: data.payload })
+        );
+        break;
 
       case 'incoming_call': {
         clearCallSignals();

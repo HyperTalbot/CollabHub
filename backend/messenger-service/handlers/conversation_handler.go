@@ -5,7 +5,9 @@ import (
 	"backend/messenger-service/models"
 	"backend/messenger-service/utils"
 	"backend/messenger-service/ws"
+	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -162,6 +164,19 @@ func (h *ConversationHandler) GetConversations(c *gin.Context) {
 			UnreadCount:  0,
 		}
 
+		// ═══ НЕПРОЧИТАННЫЕ: сообщения после last_read_message_id текущего юзера ═══
+		var cp models.ConversationParticipant
+		h.DB.Where("conversation_id = ? AND user_id = ?", conv.ID, userID).First(&cp)
+
+		var unread int64
+		unreadQ := h.DB.Model(&models.Message{}).
+			Where("conversation_id = ? AND sender_id <> ?", conv.ID, userID)
+		if cp.LastReadMessageID > 0 {
+			unreadQ = unreadQ.Where("id > ?", cp.LastReadMessageID)
+		}
+		unreadQ.Count(&unread)
+		dto.UnreadCount = int(unread)
+
 		if lastMsg.ID != 0 {
 			dto.LastMessageContent = lastMsg.Content
 			dto.LastMessageAt = lastMsg.CreatedAt
@@ -219,14 +234,44 @@ func (h *ConversationHandler) GetMessages(c *gin.Context) {
 	}
 
 	var messages []models.Message
-	h.DB.Preload("Sender").
-		Where("conversation_id = ?", conversationID). // Ищем только по conv_id
-		Order("created_at asc").
-		Find(&messages)
+	query := h.DB.Preload("Sender").Where("conversation_id = ?", conversationID)
 
-	c.JSON(http.StatusOK, gin.H{"messages": messages})
+	// Пагинация "вверх": фронт присылает before_id самого старого загруженного сообщения
+	if beforeID := c.Query("before_id"); beforeID != "" {
+		query = query.Where("id < ?", beforeID)
+	}
+
+	// Берём последние 50 (desc), затем разворачиваем в asc для фронта
+	query.Order("created_at desc").Limit(50).Find(&messages)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	// Обогащение: sender_username, sender_avatar, reply_preview, forwarded_from_name
+	enrichMessages(h.DB, messages)
+
+	// ═══ СТАТУСЫ ПРОЧТЕНИЯ (✓ / ✓✓): last_read СОБЕСЕДНИКА ═══
+	var minRead uint
+	row := h.DB.Table("conversation_participants").
+		Select("COALESCE(MIN(last_read_message_id), 0)").
+		Where("conversation_id = ? AND user_id <> ?", conversationID, userID).
+		Row()
+	_ = row.Scan(&minRead)
+	for i := range messages {
+		messages[i].IsReadByRecipient = minRead > 0 && messages[i].ID <= minRead
+	}
+
+	// ═══ last_read_message_id — фронт рисует разделитель «Новые сообщения» ═══
+	var cp models.ConversationParticipant
+	h.DB.Where("conversation_id = ? AND user_id = ?", conversationID, userID).First(&cp)
+
+	c.JSON(http.StatusOK, gin.H{
+		"messages":             messages,
+		"last_read_message_id": cp.LastReadMessageID,
+	})
 }
 
+// с точностью до сообщения (только «вперёд»)
 func (h *ConversationHandler) MarkConversationAsRead(c *gin.Context) {
 	// 1. БЕЗОПАСНОЕ ПОЛУЧЕНИЕ ID
 	// Вместо ручного приведения интерфейса используем встроенный метод Gin
@@ -238,38 +283,112 @@ func (h *ConversationHandler) MarkConversationAsRead(c *gin.Context) {
 
 	conversationID := c.Param("id")
 
-	// 2. Находим последнее сообщение
-	var lastMsgs []models.Message
-	// Используем Find + Limit(1) вместо First.
-	// Find возвращает пустой список, а не ошибку, если записей нет.
-	result := h.DB.Where("conversation_id = ?", conversationID).
-		Order("created_at desc").
-		Limit(1).
-		Find(&lastMsgs)
+	// НОВОЕ: опциональный message_id — «прочитано ДО этого сообщения включительно».
+	// Тело может отсутствовать — это не ошибка.
+	var input struct {
+		MessageID uint `json:"message_id"`
+	}
+	_ = c.ShouldBindJSON(&input)
 
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+	targetID := input.MessageID
+	if targetID > 0 {
+		// сообщение должно принадлежать этому чату
+		var cnt int64
+		h.DB.Model(&models.Message{}).
+			Where("id = ? AND conversation_id = ?", targetID, conversationID).
+			Count(&cnt)
+		if cnt == 0 {
+			targetID = 0
+		}
+	}
+
+	if targetID == 0 {
+		var lastMsgs []models.Message
+		h.DB.Where("conversation_id = ?", conversationID).
+			Order("created_at desc").Limit(1).Find(&lastMsgs)
+		if len(lastMsgs) == 0 {
+			c.JSON(http.StatusOK, gin.H{"status": "no messages to mark"})
+			return
+		}
+		targetID = lastMsgs[0].ID
+	}
+
+	// Только «вперёд» — не откатываем last_read назад
+	var cp models.ConversationParticipant
+	if err := h.DB.Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		First(&cp).Error; err == nil && targetID <= cp.LastReadMessageID {
+		c.JSON(http.StatusOK, gin.H{"status": "already read", "last_read_message_id": cp.LastReadMessageID})
 		return
 	}
 
-	// Если сообщений нет (новый чат), просто выходим с успехом
-	if len(lastMsgs) == 0 {
-		c.JSON(http.StatusOK, gin.H{"status": "no messages to mark"})
-		return
-	}
-
-	lastMsg := lastMsgs[0]
-
-	// 3. Обновляем запись участника
 	if err := h.DB.Model(&models.ConversationParticipant{}).
 		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
-		Update("last_read_message_id", lastMsg.ID).Error; err != nil {
+		Update("last_read_message_id", targetID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update read status"})
 		return
 	}
 
+	// ═══ НОВОЕ: уведомляем собеседника, чтобы у отправителя галочка
+	// ✓ сменилась на ✓✓ в реальном времени ═══
+	if h.Hub != nil {
+		convIDNum, _ := strconv.ParseUint(conversationID, 10, 32)
+		var partnerIDs []uint
+		h.DB.Table("conversation_participants").
+			Where("conversation_id = ? AND user_id <> ?", convIDNum, userID).
+			Pluck("user_id", &partnerIDs)
+		if len(partnerIDs) > 0 {
+			payload, _ := json.Marshal(map[string]interface{}{
+				"type": "messages_read",
+				"payload": map[string]interface{}{
+					"conversation_id":      convIDNum,
+					"reader_id":            userID,
+					"last_read_message_id": targetID,
+				},
+			})
+			for _, pid := range partnerIDs {
+				h.Hub.SendToUser(pid, payload)
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"status":               "updated",
-		"last_read_message_id": lastMsg.ID,
+		"last_read_message_id": targetID,
 	})
 }
+
+// 	// 2. Находим последнее сообщение
+// 	var lastMsgs []models.Message
+// 	// Используем Find + Limit(1) вместо First.
+// 	// Find возвращает пустой список, а не ошибку, если записей нет.
+// 	result := h.DB.Where("conversation_id = ?", conversationID).
+// 		Order("created_at desc").
+// 		Limit(1).
+// 		Find(&lastMsgs)
+
+// 	if result.Error != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+// 		return
+// 	}
+
+// 	// Если сообщений нет (новый чат), просто выходим с успехом
+// 	if len(lastMsgs) == 0 {
+// 		c.JSON(http.StatusOK, gin.H{"status": "no messages to mark"})
+// 		return
+// 	}
+
+// 	lastMsg := lastMsgs[0]
+
+// 	// 3. Обновляем запись участника
+// 	if err := h.DB.Model(&models.ConversationParticipant{}).
+// 		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+// 		Update("last_read_message_id", lastMsg.ID).Error; err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update read status"})
+// 		return
+// 	}
+
+// 	c.JSON(http.StatusOK, gin.H{
+// 		"status":               "updated",
+// 		"last_read_message_id": lastMsg.ID,
+// 	})
+// }

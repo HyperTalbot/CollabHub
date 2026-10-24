@@ -124,12 +124,16 @@ func main() {
 
 			// --- ГРУППЫ ---
 			protected.POST("/groups", groupHandler.CreateGroup)
+			protected.POST("/groups/:id/members", groupHandler.AddMembers)
+			protected.GET("/groups/:id/candidates", groupHandler.GetAddCandidates)
 			protected.GET("/groups", groupHandler.GetGroups)
 			protected.GET("/groups/:id", groupHandler.GetGroupByID)
 			protected.GET("/groups/:id/messages", groupHandler.GetGroupMessages)
-			protected.POST("/groups/:id/read", groupHandler.MarkGroupAsRead) // ДОБАВЛЕНО
+			protected.POST("/groups/:id/read", groupHandler.MarkGroupAsRead)
 			protected.PUT("/groups/:id", groupHandler.UpdateGroup)
 			protected.DELETE("/groups/:id", groupHandler.DeleteGroup)
+			protected.DELETE("/groups/:id/members/:user_id", groupHandler.RemoveMember)
+			protected.POST("/groups/:id/leave", groupHandler.LeaveGroup)
 
 			// --- СЕРВЕРА ---
 			protected.POST("/servers", serverHandler.CreateServer)
@@ -159,7 +163,7 @@ func main() {
 			protected.POST("/calls/:id/screen-share", callHandler.StartScreenShare)
 			protected.GET("/conversations/:id/calls", callHandler.GetCallHistory)
 
-			// ДОБАВЛЕНО: WebRTC сигналинг
+			// WebRTC сигналинг
 			protected.POST("/calls/:id/signal", callHandler.VoiceSignaling)
 
 			// --- ДЕМОНСТРАЦИЯ ЭКРАНА ---

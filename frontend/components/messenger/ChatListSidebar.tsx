@@ -1,5 +1,5 @@
 // /components/messenger/ChatListSidebar.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import axiosMessenger from '@/lib/axiosMessenger';
 import { ChatPreview, Conversation, Group, User } from '@/types/messenger';
 import { Search, Settings, Users, Circle } from 'lucide-react';
@@ -20,6 +20,10 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   const [chats, setChats] = useState<ChatPreview[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // ref, чтобы WS-слушатель всегда видел актуальный список без переподключения
+  const chatsRef = useRef<ChatPreview[]>([]);
+  useEffect(() => { chatsRef.current = chats; }, [chats]);
 
   const fetchData = async () => {
     if (!currentUser) return;
@@ -94,6 +98,115 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   useEffect(() => {
     fetchData();
   }, [currentUser]);
+
+  // ═══ НОВОЕ: мгновенно гасим бейдж непрочитанных у выбранного чата ═══
+  // (page.tsx при открытии чата помечает сообщения прочитанными на бэкенде)
+  useEffect(() => {
+    if (!selectedChatId || !selectedChatType) return;
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === selectedChatId && c.type === selectedChatType && c.unreadCount !== 0
+          ? { ...c, unreadCount: 0 }
+          : c
+      )
+    );
+  }, [selectedChatId, selectedChatType]);
+
+
+
+  // ═══ НОВОЕ: пользователь покинул группу или был удалён → перезагрузка списка ═══
+  const onGroupLeft = () => { fetchData(); };
+
+  // ═══ LIVE-ОБНОВЛЕНИЕ СПИСКА ЧАТОВ ═══
+  useEffect(() => {
+    const sortChats = (list: ChatPreview[]) =>
+      [...list].sort((a, b) => {
+        const dateA = a.lastMessageDate ? new Date(a.lastMessageDate).getTime() : 0;
+        const dateB = b.lastMessageDate ? new Date(b.lastMessageDate).getTime() : 0;
+        return dateB - dateA;
+      });
+
+    // Новое сообщение → обновляем превью, дату, unread и поднимаем чат наверх
+    const onNewMessage = (e: Event) => {
+      const msg = (e as CustomEvent).detail;
+      if (!msg) return;
+
+      const type: 'dm' | 'group' = msg.conversation_id ? 'dm' : 'group';
+      const id = Number(msg.conversation_id || msg.group_id);
+      if (!id) return;
+
+      // Чата ещё нет в списке (новый DM / добавили в группу) → полная перезагрузка
+      const exists = chatsRef.current.some((c) => c.type === type && c.id === id);
+      if (!exists) {
+        fetchData();
+        return;
+      }
+
+      const isSelected = selectedChatId === id && selectedChatType === type;
+      const isMine = currentUser && Number(msg.sender_id) === Number(currentUser.id);
+      const preview = msg.attachment_url ? '📎 Вложение' : (msg.content || '');
+
+      setChats((prev) =>
+        sortChats(
+          prev.map((c) =>
+            c.type === type && c.id === id
+              ? {
+                  ...c,
+                  lastMessage: isMine ? `Вы: ${preview}` : preview,
+                  lastMessageDate: msg.created_at || new Date().toISOString(),
+                  unreadCount: isSelected || isMine ? 0 : (c.unreadCount || 0) + 1,
+                }
+              : c
+          )
+        )
+      );
+    };
+
+    // Добавили в группу / переименовали группу / изменили аватар → перезагрузка
+    const onGroupUpdated = () => { fetchData(); };
+
+    // Переименовали контакт → обновляем заголовок DM-чата
+    const onContactUpdated = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (!d.user_id || !d.display_name) return;
+      setChats((prev) =>
+        prev.map((c) => {
+          if (c.type !== 'dm') return c;
+          const conv = c.originalData as Conversation;
+          const partner = conv?.participants?.find((p) => Number(p.id) === Number(d.user_id));
+          return partner ? { ...c, title: d.display_name } : c;
+        })
+      );
+    };
+
+  // ═══ НОВОЕ: пользователь реально увидел сообщения (трекер в ChatArea) ═══
+  const onChatRead = (e: Event) => {
+    const d = (e as CustomEvent).detail || {};
+    const id = Number(d.chat_id);
+    const type = d.chat_type;
+    if (!id) return;
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === id && c.type === type && c.unreadCount !== 0
+          ? { ...c, unreadCount: 0 }
+          : c
+      )
+    );
+  };
+
+    window.addEventListener('ws-new-message', onNewMessage);
+    window.addEventListener('group-updated', onGroupUpdated);
+    window.addEventListener('group-left', onGroupLeft);
+    window.addEventListener('contact-updated', onContactUpdated);
+    window.addEventListener('chat-read', onChatRead);
+    return () => {
+      window.removeEventListener('ws-new-message', onNewMessage);
+      window.removeEventListener('group-updated', onGroupUpdated);
+      window.removeEventListener('group-left', onGroupLeft);
+      window.removeEventListener('contact-updated', onContactUpdated);
+      window.removeEventListener('chat-read', onChatRead);
+    };
+  }, [selectedChatId, selectedChatType, currentUser]);
 
   // Фильтрация
   const filteredChats = chats.filter(c =>

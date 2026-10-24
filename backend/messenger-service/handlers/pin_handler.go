@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"backend/messenger-service/models"
+	"backend/messenger-service/utils"
 	"backend/messenger-service/ws"
 	"encoding/json"
 	"net/http"
@@ -17,273 +18,190 @@ type PinHandler struct {
 	Hub *ws.Hub
 }
 
-// PinMessageToChat - Закрепить сообщение в чате
-func (h *PinHandler) PinMessageToChat(c *gin.Context) {
-	userID := c.GetUint("user_id")
+type pinnedMessageResponse struct {
+	ID             uint      `json:"id"` // ID самого сообщения (фронт использует как key)
+	PinID          uint      `json:"pin_id"`
+	MessageID      uint      `json:"message_id"`
+	Content        string    `json:"content"`
+	SenderID       uint      `json:"sender_id"`
+	SenderUsername string    `json:"sender_username"`
+	CreatedAt      time.Time `json:"created_at"` // дата СООБЩЕНИЯ (fix Invalid Date)
+	PinnedAt       time.Time `json:"pinned_at"`
+	PinnedByUserID uint      `json:"pinned_by_user_id"`
+	AttachmentURL  string    `json:"attachment_url,omitempty"`
+	AttachmentType string    `json:"attachment_type,omitempty"`
+}
 
-	var input struct {
-		MessageID      uint  `json:"message_id" binding:"required"`
-		ConversationID *uint `json:"conversation_id"`
-		GroupID        *uint `json:"group_id"`
+// upsertPin — вставляет запись или «воскрешает» soft-deleted.
+// ВАЖНО: уникальный индекс idx_pinned_message физически включает
+// soft-deleted строки, поэтому повторный Create после Unpin падал с
+// SQLSTATE 23505. Вместо вставки обновляем существующую строку.
+func (h *PinHandler) upsertPin(msg models.Message, pinnedBy uint) error {
+	var cnt int64
+	h.DB.Unscoped().Model(&models.PinnedMessage{}).Where("message_id = ?", msg.ID).Count(&cnt)
+	if cnt > 0 {
+		return h.DB.Unscoped().Model(&models.PinnedMessage{}).
+			Where("message_id = ?", msg.ID).
+			Updates(map[string]interface{}{
+				"deleted_at":        nil,
+				"pinned_at":         time.Now(),
+				"pinned_by_user_id": pinnedBy,
+				"conversation_id":   msg.ConversationID,
+				"group_id":          msg.GroupID,
+				"channel_id":        msg.ChannelID,
+			}).Error
 	}
-
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Проверяем существование сообщения
-	var message models.Message
-	if err := h.DB.First(&message, input.MessageID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Message not found"})
-		return
-	}
-
-	// Проверяем доступ
-	if input.ConversationID != nil {
-		var count int64
-		h.DB.Table("conversation_participants").
-			Where("conversation_id = ? AND user_id = ?", *input.ConversationID, userID).
-			Count(&count)
-
-		if count == 0 {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-			return
-		}
-	} else if input.GroupID != nil {
-		var count int64
-		h.DB.Table("group_members").
-			Where("group_id = ? AND user_id = ?", *input.GroupID, userID).
-			Count(&count)
-
-		if count == 0 {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-			return
-		}
-	}
-
-	// Проверяем, не закреплено ли уже
-	var existingPin models.PinnedMessage
-	result := h.DB.Where("message_id = ?", input.MessageID).First(&existingPin)
-
-	if result.Error == nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "Message already pinned"})
-		return
-	}
-
-	// Создаём закрепление
-	pinnedMsg := models.PinnedMessage{
-		MessageID:      input.MessageID,
-		ConversationID: input.ConversationID,
-		GroupID:        input.GroupID,
-		PinnedByUserID: userID,
+	return h.DB.Create(&models.PinnedMessage{
+		MessageID:      msg.ID,
+		ConversationID: msg.ConversationID,
+		GroupID:        msg.GroupID,
+		ChannelID:      msg.ChannelID,
+		PinnedByUserID: pinnedBy,
 		PinnedAt:       time.Now(),
-	}
-
-	if err := h.DB.Create(&pinnedMsg).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pin message"})
-		return
-	}
-
-	// Обновляем флаг в самом сообщении
-	h.DB.Model(&message).Update("is_pinned", true)
-
-	// WebSocket уведомление
-	var recipients []uint
-	if input.ConversationID != nil {
-		h.DB.Table("conversation_participants").
-			Where("conversation_id = ?", *input.ConversationID).
-			Pluck("user_id", &recipients)
-	} else if input.GroupID != nil {
-		h.DB.Table("group_members").
-			Where("group_id = ?", *input.GroupID).
-			Pluck("user_id", &recipients)
-	}
-
-	wsPayload := map[string]interface{}{
-		"type": "message_pinned",
-		"payload": map[string]interface{}{
-			"message_id":      input.MessageID,
-			"conversation_id": input.ConversationID,
-			"group_id":        input.GroupID,
-			"pinned_by":       userID,
-		},
-	}
-
-	data, _ := json.Marshal(wsPayload)
-	h.Hub.Broadcast <- ws.BroadcastMessage{
-		UserIDs: recipients,
-		Data:    data,
-	}
-
-	c.JSON(http.StatusOK, pinnedMsg)
+	}).Error
 }
 
-// UnpinMessage - Открепить сообщение
-func (h *PinHandler) UnpinMessage(c *gin.Context) {
-	userID := c.GetUint("user_id")
-	messageID := c.Param("message_id")
-
-	var pinnedMsg models.PinnedMessage
-	if err := h.DB.Where("message_id = ?", messageID).First(&pinnedMsg).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Pinned message not found"})
-		return
-	}
-
-	// Проверяем доступ
-	if pinnedMsg.ConversationID != nil {
-		var count int64
-		h.DB.Table("conversation_participants").
-			Where("conversation_id = ? AND user_id = ?", *pinnedMsg.ConversationID, userID).
-			Count(&count)
-
-		if count == 0 {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-			return
-		}
-	} else if pinnedMsg.GroupID != nil {
-		var count int64
-		h.DB.Table("group_members").
-			Where("group_id = ? AND user_id = ?", *pinnedMsg.GroupID, userID).
-			Count(&count)
-
-		if count == 0 {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-			return
-		}
-	}
-
-	// Удаляем закрепление
-	if err := h.DB.Delete(&pinnedMsg).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unpin"})
-		return
-	}
-
-	// Обновляем флаг в сообщении
-	h.DB.Model(&models.Message{}).Where("id = ?", messageID).Update("is_pinned", false)
-	// WebSocket уведомление
+func (h *PinHandler) scopeRecipients(msg models.Message) []uint {
 	var recipients []uint
-	if pinnedMsg.ConversationID != nil {
-		h.DB.Table("conversation_participants").
-			Where("conversation_id = ?", *pinnedMsg.ConversationID).
-			Pluck("user_id", &recipients)
-	} else if pinnedMsg.GroupID != nil {
-		h.DB.Table("group_members").
-			Where("group_id = ?", *pinnedMsg.GroupID).
-			Pluck("user_id", &recipients)
-	}
-
-	wsPayload := map[string]interface{}{
-		"type": "message_unpinned",
-		"payload": map[string]interface{}{
-			"message_id":      pinnedMsg.MessageID,
-			"conversation_id": pinnedMsg.ConversationID,
-			"group_id":        pinnedMsg.GroupID,
-		},
-	}
-
-	data, _ := json.Marshal(wsPayload)
-	h.Hub.Broadcast <- ws.BroadcastMessage{
-		UserIDs: recipients,
-		Data:    data,
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "unpinned"})
-}
-
-// GetPinnedMessages - Получить закреплённые сообщения
-func (h *PinHandler) GetPinnedMessages(c *gin.Context) {
-	userID := c.GetUint("user_id")
-	conversationID := c.Query("conversation_id")
-	groupID := c.Query("group_id")
-
-	query := h.DB.Model(&models.PinnedMessage{}).
-		Joins("JOIN messages ON messages.id = pinned_messages.message_id").
-		Select("pinned_messages.*, messages.content, messages.sender_id, messages.created_at as message_created_at")
-
-	if conversationID != "" {
-		// Проверка доступа
-		var count int64
-		h.DB.Table("conversation_participants").
-			Where("conversation_id = ? AND user_id = ?", conversationID, userID).
-			Count(&count)
-
-		if count == 0 {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-			return
-		}
-
-		query = query.Where("pinned_messages.conversation_id = ?", conversationID)
-	} else if groupID != "" {
-		var count int64
-		h.DB.Table("group_members").
-			Where("group_id = ? AND user_id = ?", groupID, userID).
-			Count(&count)
-
-		if count == 0 {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-			return
-		}
-
-		query = query.Where("pinned_messages.group_id = ?", groupID)
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "conversation_id or group_id required"})
-		return
-	}
-
-	var pinnedMessages []struct {
-		models.PinnedMessage
-		Content          string    `json:"content"`
-		SenderID         uint      `json:"sender_id"`
-		MessageCreatedAt time.Time `json:"message_created_at"`
-		SenderUsername   string    `json:"sender_username"`
-	}
-
-	if err := query.Order("pinned_messages.pinned_at DESC").Find(&pinnedMessages).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch pinned messages"})
-		return
-	}
-
-	// Загружаем имена отправителей
-	for i := range pinnedMessages {
-		var sender models.User
-		h.DB.First(&sender, pinnedMessages[i].SenderID)
-		pinnedMessages[i].SenderUsername = sender.Username
-	}
-
-	c.JSON(http.StatusOK, gin.H{"pinned_messages": pinnedMessages})
-}
-
-func (h *PinHandler) broadcastPinUpdate(msg models.Message, eventType string, userID uint) {
-	var recipients []uint
-
-	if msg.ConversationID != nil {
+	switch {
+	case msg.ConversationID != nil:
 		h.DB.Table("conversation_participants").
 			Where("conversation_id = ?", *msg.ConversationID).
 			Pluck("user_id", &recipients)
-	} else if msg.GroupID != nil {
+	case msg.GroupID != nil:
 		h.DB.Table("group_members").
 			Where("group_id = ?", *msg.GroupID).
 			Pluck("user_id", &recipients)
-	} else if msg.ChannelID != nil {
+	case msg.ChannelID != nil:
 		var channel models.Channel
 		h.DB.First(&channel, *msg.ChannelID)
 		h.DB.Table("server_members").
 			Where("server_id = ?", channel.ServerID).
 			Pluck("user_id", &recipients)
 	}
+	return recipients
+}
 
-	wsPayload := map[string]interface{}{
-		"type": eventType,
+func (h *PinHandler) broadcastPin(msg models.Message, pinned bool) {
+	if h.Hub == nil {
+		return
+	}
+	payload, _ := json.Marshal(map[string]interface{}{
+		"type": "message_pinned",
 		"payload": map[string]interface{}{
 			"message_id": msg.ID,
-			"user_id":    userID,
+			"is_pinned":  pinned,
 		},
+	})
+	for _, id := range h.scopeRecipients(msg) {
+		h.Hub.SendToUser(id, payload)
+	}
+}
+
+// PinMessageToChat — POST /pin
+func (h *PinHandler) PinMessageToChat(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	var input struct {
+		MessageID uint `json:"message_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var msg models.Message
+	if err := h.DB.First(&msg, input.MessageID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Message not found"})
+		return
+	}
+	if err := h.upsertPin(msg, userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pin"})
+		return
+	}
+	h.DB.Model(&msg).Update("is_pinned", true)
+	h.broadcastPin(msg, true)
+	c.JSON(http.StatusOK, gin.H{"status": "pinned", "message_id": msg.ID})
+}
+
+// UnpinMessage — DELETE /pin/:message_id
+func (h *PinHandler) UnpinMessage(c *gin.Context) {
+	msgID := c.Param("message_id")
+	var msg models.Message
+	if err := h.DB.First(&msg, msgID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Message not found"})
+		return
+	}
+	h.DB.Where("message_id = ?", msg.ID).Delete(&models.PinnedMessage{})
+	h.DB.Model(&msg).Update("is_pinned", false)
+	h.broadcastPin(msg, false)
+	c.JSON(http.StatusOK, gin.H{"status": "unpinned"})
+}
+
+// GetPinnedMessages — GET /pinned?conversation_id=|group_id=|channel_id=
+// Возвращает ДАННЫЕ СООБЩЕНИЙ (content, sender, created_at), а не голые пины.
+func (h *PinHandler) GetPinnedMessages(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	convID := c.Query("conversation_id")
+	groupID := c.Query("group_id")
+	channelID := c.Query("channel_id")
+
+	query := h.DB.Model(&models.PinnedMessage{})
+	switch {
+	case convID != "":
+		var cnt int64
+		h.DB.Table("conversation_participants").
+			Where("conversation_id = ? AND user_id = ?", convID, userID).Count(&cnt)
+		if cnt == 0 {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+		query = query.Where("conversation_id = ?", convID)
+	case groupID != "":
+		var cnt int64
+		h.DB.Model(&models.GroupMember{}).
+			Where("group_id = ? AND user_id = ?", groupID, userID).Count(&cnt)
+		if cnt == 0 {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+		query = query.Where("group_id = ?", groupID)
+	case channelID != "":
+		query = query.Where("channel_id = ?", channelID)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "conversation_id, group_id or channel_id required"})
+		return
 	}
 
-	data, _ := json.Marshal(wsPayload)
-	h.Hub.Broadcast <- ws.BroadcastMessage{
-		UserIDs: recipients,
-		Data:    data,
+	var pins []models.PinnedMessage
+	query.Order("pinned_at desc").Limit(100).Find(&pins)
+
+	items := make([]pinnedMessageResponse, 0, len(pins))
+	for _, p := range pins {
+		var msg models.Message
+		if err := h.DB.Preload("Sender").First(&msg, p.MessageID).Error; err != nil {
+			continue // сообщение удалено — пропускаем
+		}
+		name := msg.Sender.Username
+		if u := utils.GetUserByID(msg.SenderID); u != nil {
+			if u.DisplayName != "" {
+				name = u.DisplayName
+			} else if u.Username != "" {
+				name = u.Username
+			}
+		}
+		items = append(items, pinnedMessageResponse{
+			ID:             msg.ID,
+			PinID:          p.ID,
+			MessageID:      p.MessageID,
+			Content:        msg.Content,
+			SenderID:       msg.SenderID,
+			SenderUsername: name,
+			CreatedAt:      msg.CreatedAt,
+			PinnedAt:       p.PinnedAt,
+			PinnedByUserID: p.PinnedByUserID,
+			AttachmentURL:  msg.AttachmentURL,
+			AttachmentType: msg.AttachmentType,
+		})
 	}
+
+	c.JSON(http.StatusOK, gin.H{"pinned_messages": items})
 }
