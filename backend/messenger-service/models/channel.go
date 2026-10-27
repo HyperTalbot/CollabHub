@@ -15,16 +15,18 @@ const (
 )
 
 type Channel struct {
-	ID       uint        `gorm:"primaryKey"`
-	ServerID uint        `gorm:"not null"` // <-- Привязка к серверу
-	Name     string      `gorm:"not null"`
-	Type     ChannelType `gorm:"default:'text'"`
-	Topic    string      // Тема канала
+	ID         uint        `gorm:"primaryKey" json:"id"`
+	ServerID   uint        `gorm:"not null;index" json:"server_id"`
+	Server     Server      `gorm:"foreignKey:ServerID" json:"-"`
+	CategoryID *uint       `gorm:"index" json:"category_id"`
+	Name       string      `gorm:"not null" json:"name"`
+	Type       ChannelType `gorm:"not null;default:text" json:"type"`
+	IsPrivate  bool        `gorm:"default:false" json:"is_private"`
+	IsPinned   bool        `gorm:"default:false" json:"is_pinned"`
+	Position   int         `gorm:"default:0" json:"position"`
 
 	// Связь с сообщениями (вместо ConversationID будет ChannelID)
 	// Messages []Message `gorm:"foreignKey:ChannelID"`
-
-	Server Server `gorm:"foreignKey:ServerID" json:"-"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`

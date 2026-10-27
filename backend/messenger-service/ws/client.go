@@ -192,36 +192,27 @@ func (c *Client) buildReplyPreviews(ids []uint) []map[string]interface{} {
 }
 
 // buildMessagePayload — единый WS-payload нового сообщения
-func (c *Client) buildMessagePayload(m models.Message, sender models.User, scopeKey string) map[string]interface{} {
-	payload := map[string]interface{}{
-		"type": "new_message",
-		"payload": map[string]interface{}{
-			"id":                m.ID,
-			scopeKey:            m.ConversationID,
-			"sender_id":         m.SenderID,
-			"sender_username":   sender.Username,
-			"sender_avatar":     sender.AvatarURL,
-			"content":           m.Content,
-			"created_at":        m.CreatedAt,
-			"reply_to_id":       m.ReplyToID,
-			"forwarded_from":    m.ForwardedFrom,
-			"attachment_url":    m.AttachmentURL,
-			"attachment_type":   m.AttachmentType,
-			"is_edited":         m.IsEdited,
-			"is_pinned":         m.IsPinned,
-			"is_system_message": m.IsSystemMessage,
-		},
-	}
-
-	inner := payload["payload"].(map[string]interface{})
-
-	// корректный scope id (conversation_id ИЛИ group_id)
-	if scopeKey == "group_id" {
-		inner["conversation_id"] = nil
-		inner["group_id"] = m.GroupID
-	} else {
-		inner["conversation_id"] = m.ConversationID
-		inner["group_id"] = nil
+// (ИЗМЕНЕНО: всегда включает conversation_id / group_id / channel_id —
+//
+//	нужное поле заполнено, остальные null)
+func (c *Client) buildMessagePayload(m models.Message, sender models.User) map[string]interface{} {
+	inner := map[string]interface{}{
+		"id":                m.ID,
+		"conversation_id":   m.ConversationID,
+		"group_id":          m.GroupID,
+		"channel_id":        m.ChannelID,
+		"sender_id":         m.SenderID,
+		"sender_username":   sender.Username,
+		"sender_avatar":     sender.AvatarURL,
+		"content":           m.Content,
+		"created_at":        m.CreatedAt,
+		"reply_to_id":       m.ReplyToID,
+		"forwarded_from":    m.ForwardedFrom,
+		"attachment_url":    m.AttachmentURL,
+		"attachment_type":   m.AttachmentType,
+		"is_edited":         m.IsEdited,
+		"is_pinned":         m.IsPinned,
+		"is_system_message": m.IsSystemMessage,
 	}
 
 	if m.ForwardedFrom != nil {
@@ -230,12 +221,11 @@ func (c *Client) buildMessagePayload(m models.Message, sender models.User, scope
 	if preview := c.buildReplyPreview(m.ReplyToID); preview != nil {
 		inner["reply_preview"] = preview
 	}
-	// мульти-ответ
 	if ids := parseReplyIDs(m.ReplyToIDs); len(ids) > 0 {
 		inner["reply_to_ids"] = ids
 		inner["reply_previews"] = c.buildReplyPreviews(ids)
 	}
-	return payload
+	return map[string]interface{}{"type": "new_message", "payload": inner}
 }
 
 func (c *Client) ReadPump() {
@@ -308,7 +298,7 @@ func (c *Client) ReadPump() {
 				Where("conversation_id = ? AND user_id = ?", *msgReq.ConversationID, c.UserID).
 				Update("last_read_message_id", newMessage.ID)
 
-			wsPayload := c.buildMessagePayload(newMessage, sender, "conversation_id")
+			wsPayload := c.buildMessagePayload(newMessage, sender)
 			responseBytes, _ := json.Marshal(wsPayload)
 
 			var participants []models.User
@@ -360,7 +350,7 @@ func (c *Client) ReadPump() {
 				Where("group_id = ? AND user_id = ?", *msgReq.GroupID, c.UserID).
 				Update("last_read_message_id", newMessage.ID)
 
-			wsPayload := c.buildMessagePayload(newMessage, sender, "group_id")
+			wsPayload := c.buildMessagePayload(newMessage, sender)
 			responseBytes, _ := json.Marshal(wsPayload)
 
 			var members []uint
@@ -369,6 +359,57 @@ func (c *Client) ReadPump() {
 				Pluck("user_id", &members)
 
 			for _, memberID := range members {
+				c.Hub.SendToUser(memberID, responseBytes)
+			}
+		}
+
+		// ═══ НОВОЕ: КАНАЛЫ СЕРВЕРОВ ═══
+		if msgReq.ChannelID != nil {
+			var channel models.Channel
+			if err := c.DB.First(&channel, *msgReq.ChannelID).Error; err != nil {
+				log.Printf("❌ Channel %v not found", *msgReq.ChannelID)
+				continue
+			}
+
+			// проверка членства на сервере
+			var isMember int64
+			c.DB.Table("server_members").
+				Where("server_id = ? AND user_id = ?", channel.ServerID, c.UserID).
+				Count(&isMember)
+			if isMember == 0 {
+				errPayload, _ := json.Marshal(map[string]interface{}{
+					"type":    "error",
+					"payload": map[string]interface{}{"error": "You are not a member of this server"},
+				})
+				c.TrySend(errPayload)
+				continue
+			}
+
+			newMessage := models.Message{
+				ChannelID:      msgReq.ChannelID,
+				SenderID:       c.UserID,
+				Content:        msgReq.Content,
+				ReplyToID:      msgReq.ReplyToID,
+				ReplyToIDs:     joinIDs(msgReq.ReplyToIDs),
+				ForwardedFrom:  msgReq.ForwardedFrom,
+				AttachmentURL:  msgReq.AttachmentURL,
+				AttachmentType: msgReq.AttachmentType,
+				CreatedAt:      time.Now(),
+			}
+			if err := c.DB.Create(&newMessage).Error; err != nil {
+				log.Printf("❌ DB Error (Channel): %v", err)
+				continue
+			}
+
+			wsPayload := c.buildMessagePayload(newMessage, sender)
+			responseBytes, _ := json.Marshal(wsPayload)
+
+			var serverMemberIDs []uint
+			c.DB.Table("server_members").
+				Where("server_id = ?", channel.ServerID).
+				Pluck("user_id", &serverMemberIDs)
+
+			for _, memberID := range serverMemberIDs {
 				c.Hub.SendToUser(memberID, responseBytes)
 			}
 		}

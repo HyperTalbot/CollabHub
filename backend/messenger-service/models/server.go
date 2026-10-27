@@ -43,6 +43,19 @@ type ServerInvite struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
+// ServerInvitation — приглашение пользователя на сервер
+type ServerInvitation struct {
+	ID        uint   `gorm:"primaryKey" json:"id"`
+	ServerID  uint   `gorm:"not null;index" json:"server_id"`
+	InviterID uint   `gorm:"not null" json:"inviter_id"`
+	InviteeID uint   `gorm:"not null;index" json:"invitee_id"`
+	Status    string `gorm:"default:pending" json:"status"` // pending | accepted | rejected
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
 // ServerRole - Роли на сервере
 type ServerRole struct {
 	ID       uint   `gorm:"primaryKey" json:"id"`

@@ -258,8 +258,6 @@ func (h *FriendHandler) GetFriendRequests(c *gin.Context) {
 	})
 }
 
-// backend/messenger-service/handlers/friend_handler.go
-
 // getFriendshipStatus - Вспомогательная функция для проверки статуса дружбы
 func (h *FriendHandler) getFriendshipStatus(userID, friendID uint) string {
 	var friendship models.Friendship

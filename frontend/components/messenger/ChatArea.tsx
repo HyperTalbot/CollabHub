@@ -23,7 +23,7 @@ interface ChatAreaProps {
   isLoadingMessages: boolean;
   onForwardMessage?: (
     message: Message | Message[],
-    targets: { id: number; type: 'dm' | 'group' }[],
+    targets: { id: number; type: 'dm' | 'group' | 'channel' }[],
     comment?: string,
     showSender?: boolean
   ) => void;
@@ -454,7 +454,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   };
 
   const handleForwardConfirm = (
-    targets: { id: number; type: 'dm' | 'group' }[],
+    targets: { id: number; type: 'dm' | 'group' | 'channel' }[],
     comment?: string,
     showSender?: boolean
   ) => {

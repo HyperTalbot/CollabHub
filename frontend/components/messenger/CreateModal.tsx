@@ -207,16 +207,6 @@ export const CreateModal: React.FC<CreateModalProps> = ({ isOpen, onClose, onCre
                 avatar_url: avatarUrl
             }, { headers: { 'Authorization': `Bearer ${token}` } });
 
-            const newServerId = serverRes.data.id;
-
-            if (newServerId) {
-                await axiosMessenger.post('/channels', {
-                    name: "general",
-                    type: "text",
-                    server_id: newServerId
-                }, { headers: { 'Authorization': `Bearer ${token}` } });
-            }
-
             toast.success("Сервер создан!");
             onCreated();
             handleClose();

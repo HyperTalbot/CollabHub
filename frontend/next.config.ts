@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // В монорепозитории два lockfile (корень + frontend) —
+  // явно указываем корень трейсинга, чтобы Next не угадывал
+  outputFileTracingRoot: path.join(__dirname, "../"),
 };
 
 export default nextConfig;

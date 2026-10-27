@@ -1,9 +1,10 @@
 // frontend/components/messenger/FriendsPage.tsx
 import React, { useState, useEffect } from 'react';
-import { Search, UserPlus, MessageCircle, X, Check, Clock, Trash2 } from 'lucide-react';
+import { Search, UserPlus, MessageCircle, X, Check, Clock, Trash2, Server as ServerIcon } from 'lucide-react';
 import axiosMessenger from '@/lib/axiosMessenger';
 import toast from 'react-hot-toast';
 import { User } from '@/types/messenger';
+import { resolveMediaUrl } from '@/lib/mediaUrl';
 
 interface Friend {
   id: number;
@@ -35,10 +36,21 @@ interface FriendsPageProps {
   onStartChat: (userId: number) => void;
 }
 
+interface ServerInvite {
+  id: number;
+  server_id: number;
+  server_name: string;
+  server_avatar?: string;
+  inviter_id: number;
+  inviter_name: string;
+  created_at: string;
+}
+
 export const FriendsPage: React.FC<FriendsPageProps> = ({ currentUser, onStartChat }) => {
   const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'search'>('friends');
   const [friends, setFriends] = useState<Friend[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
+  const [serverInvites, setServerInvites] = useState<ServerInvite[]>([]);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -48,8 +60,67 @@ export const FriendsPage: React.FC<FriendsPageProps> = ({ currentUser, onStartCh
       loadFriends();
     } else if (activeTab === 'requests') {
       loadRequests();
+      loadServerInvites();
     }
   }, [activeTab]);
+
+  // ═══ НОВОЕ: грузим счётчики СРАЗУ при монтировании + live-обновление ═══
+  useEffect(() => {
+    loadRequests();
+    loadServerInvites();
+    const onFriendRequest = () => loadRequests();
+    const onServerInvite = () => loadServerInvites();
+    window.addEventListener('friend-request', onFriendRequest);
+    window.addEventListener('server-invite', onServerInvite);
+    return () => {
+      window.removeEventListener('friend-request', onFriendRequest);
+      window.removeEventListener('server-invite', onServerInvite);
+    };
+  }, []);
+
+  // после любого действия сообщаем бейджу в NavigationRail обновиться
+  const notifyRequestsUpdated = () => {
+    window.dispatchEvent(new CustomEvent('requests-updated'));
+  };
+
+  // live-обновление при новом приглашении
+  useEffect(() => {
+    const onInvite = () => { if (activeTab === 'requests') loadServerInvites(); };
+    window.addEventListener('server-invite', onInvite);
+    return () => window.removeEventListener('server-invite', onInvite);
+  }, [activeTab]);
+
+  const loadServerInvites = async () => {
+    try {
+      const { data } = await axiosMessenger.get('/server-invites');
+      setServerInvites(data.invites || []);
+    } catch (e) {
+      console.error('Failed to load server invites', e);
+    }
+  };
+
+  const acceptServerInvite = async (inviteId: number) => {
+    try {
+      await axiosMessenger.post(`/server-invites/${inviteId}/accept`);
+      toast.success('Вы присоединились к серверу');
+      loadServerInvites();
+      notifyRequestsUpdated();
+      window.dispatchEvent(new CustomEvent('servers-updated', { detail: {} }));
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error || 'Ошибка');
+    }
+  };
+
+  const rejectServerInvite = async (inviteId: number) => {
+    try {
+      await axiosMessenger.post(`/server-invites/${inviteId}/reject`);
+      toast.success('Приглашение отклонено');
+      loadServerInvites();
+      notifyRequestsUpdated();
+    } catch (e) {
+      toast.error('Ошибка');
+    }
+  };
 
   const loadFriends = async () => {
     setLoading(true);
@@ -114,6 +185,7 @@ export const FriendsPage: React.FC<FriendsPageProps> = ({ currentUser, onStartCh
       toast.success('Запрос принят');
       loadRequests();
       loadFriends();
+      notifyRequestsUpdated();
     } catch (error) {
       toast.error('Ошибка');
     }
@@ -124,6 +196,7 @@ export const FriendsPage: React.FC<FriendsPageProps> = ({ currentUser, onStartCh
       await axiosMessenger.post(`/friends/reject/${friendshipId}`);
       toast.success('Запрос отклонён');
       loadRequests();
+      notifyRequestsUpdated();
     } catch (error) {
       toast.error('Ошибка');
     }
@@ -168,9 +241,9 @@ export const FriendsPage: React.FC<FriendsPageProps> = ({ currentUser, onStartCh
           }`}
         >
           Запросы
-          {requests.length > 0 && (
+          {requests.length + serverInvites.length > 0 && (
             <span className="absolute top-2 right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-              {requests.length}
+              {requests.length + serverInvites.length}
             </span>
           )}
         </button>
@@ -286,52 +359,59 @@ export const FriendsPage: React.FC<FriendsPageProps> = ({ currentUser, onStartCh
             {/* Запросы в друзья */}
             {activeTab === 'requests' && (
               <div className="p-4 space-y-2">
-                {requests.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    Нет входящих запросов
-                  </div>
-                ) : (
-                  requests.map((request) => (
-                    <div
-                      key={request.friendship_id}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold overflow-hidden">
-                        {request.avatar_url ? (
-                          <img src={request.avatar_url} alt={request.username} className="w-full h-full object-cover" />
-                        ) : (
-                          <span>{getInitials(request.username)}</span>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 dark:text-white truncate">
-                          {request.display_name || request.username}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(request.created_at).toLocaleDateString('ru-RU')}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => acceptRequest(request.friendship_id)}
-                          className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                          title="Принять"
+                {/* ═══ СЕРВЕРНЫЕ ПРИГЛАШЕНИЯ ═══ */}
+                {serverInvites.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2 flex items-center gap-1">
+                      <ServerIcon size={12} /> Приглашения на серверы
+                    </h3>
+                    <div className="space-y-2">
+                      {serverInvites.map((inv) => (
+                        <div
+                          key={`srv-${inv.id}`}
+                          className="flex items-center gap-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
                         >
-                          <Check size={20} />
-                        </button>
-                        <button
-                          onClick={() => rejectRequest(request.friendship_id)}
-                          className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                          title="Отклонить"
-                        >
-                          <X size={20} />
-                        </button>
-                      </div>
+                          <div className="w-12 h-12 rounded-[16px] bg-gradient-to-br from-green-500 to-blue-500 flex items-center justify-center text-white font-bold overflow-hidden">
+                            {inv.server_avatar ? (
+                              <img src={resolveMediaUrl(inv.server_avatar)} alt={inv.server_name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span>{inv.server_name?.[0]?.toUpperCase()}</span>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-900 dark:text-white truncate">{inv.server_name}</p>
+                            <p className="text-xs text-gray-500 truncate">
+                              Пригласил: {inv.inviter_name || 'пользователь'} · {new Date(inv.created_at).toLocaleDateString('ru-RU')}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => acceptServerInvite(inv.id)}
+                              className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                              title="Принять"
+                            >
+                              <Check size={20} />
+                            </button>
+                            <button
+                              onClick={() => rejectServerInvite(inv.id)}
+                              className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                              title="Отклонить"
+                            >
+                              <X size={20} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))
+                  </div>
                 )}
               </div>
             )}
+                {/* Дружеские запросы
+                {requests.length === 0 && serverInvites.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">Нет входящих запросов</div>
+                ) : (
+                  requests.map((request) => ( */}
 
             {/* Результаты поиска */}
             {activeTab === 'search' && (

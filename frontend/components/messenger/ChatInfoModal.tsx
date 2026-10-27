@@ -3,11 +3,12 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import axiosMessenger from '@/lib/axiosMessenger';
+import { resolveMediaUrl } from '@/lib/mediaUrl';
 import toast from 'react-hot-toast';
 import {
   X, Image as ImageIcon, FileText, Link2, Mic, MoreVertical,
   User as UserIcon, Users as UsersIcon, Pencil, Share2, ArrowRight, Loader2,
-  UserPlus, Search, Check, ArrowLeft, LogOut, UserMinus,
+  UserPlus, Search, Check, ArrowLeft, LogOut, UserMinus, Hash,
 } from 'lucide-react';
 
 interface MediaItem {
@@ -39,13 +40,14 @@ interface GroupMember {
 }
 
 export interface ChatInfoData {
-  type: 'dm' | 'group' | 'user';
+  type: 'dm' | 'group' | 'user' | 'channel' | 'server';
   id: number;
   title: string;
   avatar_url: string;
   user?: ChatUserInfo;
   members?: GroupMember[];
   member_count: number;
+  created_at?: string; // НОВОЕ
   folders: { media: number; files: number; links: number; voices: number };
   media: MediaItem[];
   files: MediaItem[];
@@ -56,14 +58,15 @@ export interface ChatInfoData {
 interface ChatInfoModalProps {
   open: boolean;
   chatId: number;
-  chatType: 'dm' | 'group' | 'user'; // 'user' — профиль пользователя по user_id
+  chatType: 'dm' | 'group' | 'user' | 'channel' | 'server'; // 'user' — профиль пользователя по user_id
   currentUser: any;
   onClose: () => void;
   onUpdated: (info: { kind: 'contact' | 'group'; id: number; name: string; avatar_url?: string }) => void;
+  serverId?: number;
 }
 
 type FolderKey = 'media' | 'files' | 'links' | 'voices';
-type TargetType = 'dm' | 'group' | 'user';
+type TargetType = 'dm' | 'group' | 'user' | 'channel' | 'server';
 
 const FOLDER_TABS: { key: FolderKey; label: string; icon: React.ReactNode }[] = [
   { key: 'media', label: 'Медиа', icon: <ImageIcon size={14} /> },
@@ -78,7 +81,7 @@ const Avatar: React.FC<{ src?: string; name?: string; size?: number }> = ({ src,
     style={{ width: size, height: size }}
   >
     {src ? (
-      <img src={src} alt={name || ''} className="w-full h-full object-cover" />
+      <img src={resolveMediaUrl(src)} alt={name || ''} className="w-full h-full object-cover" />
     ) : (
       <span style={{ fontSize: size / 2.6 }}>{(name || '?')[0]?.toUpperCase()}</span>
     )}
@@ -92,6 +95,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
   currentUser,
   onClose,
   onUpdated,
+  serverId,
 }) => {
   const [loading, setLoading] = useState(true);
   const [info, setInfo] = useState<ChatInfoData | null>(null);
@@ -118,17 +122,25 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
   // (нужен, чтобы владелец видел «Удалить участника» в more-меню участника)
   const [groupCtx, setGroupCtx] = useState<{ groupId: number; myRole: string } | null>(null);
 
+  // ═══ НОВОЕ: контекст сервера для профиля участника (медиа из чатов сервера) ═══
+  const [userServerCtx, setUserServerCtx] = useState<number | null>(null);
+
   const effectiveId = viewTarget?.id ?? chatId;
   const effectiveType: TargetType = viewTarget?.type ?? chatType;
   const isGroup = effectiveType === 'group';
   const isUserLike = effectiveType === 'dm' || effectiveType === 'user';
+  const isChannel = effectiveType === 'channel';
+  const isServer = effectiveType === 'server';
 
   const loadInfo = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await axiosMessenger.get<ChatInfoData>(
-        `/chats/${effectiveId}/info?type=${effectiveType}`
-      );
+      let qs = `type=${effectiveType}`;
+      if (effectiveType === 'user') {
+        const sid = userServerCtx ?? serverId;
+        if (sid) qs += `&server_id=${sid}`;
+      }
+      const { data } = await axiosMessenger.get<ChatInfoData>(`/chats/${effectiveId}/info?${qs}`);
       setInfo(data);
     } catch (e: any) {
       console.error('Failed to load chat info', e);
@@ -136,7 +148,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [effectiveId, effectiveType]);
+  }, [effectiveId, effectiveType, serverId, userServerCtx]);
 
   useEffect(() => {
     if (!open) {
@@ -145,6 +157,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
       setViewTarget(null);
       setShowAddMembers(false);
       setGroupCtx(null);
+      setUserServerCtx(null);
       setInfo(null);
       return;
     }
@@ -167,12 +180,11 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
   // ───────── Поиск кандидатов (друзья + DM-контакты) для добавления ─────────
   // ВАЖНО: определена ДО `if (!open) return null`, чтобы эффект не падал на TDZ
   const doSearchUsers = async () => {
-    if (!info || effectiveType !== 'group') return;
+    if (!info || (effectiveType !== 'group' && effectiveType !== 'server')) return;
     setSearching(true);
     try {
-      const { data } = await axiosMessenger.get(
-        `/groups/${effectiveId}/candidates?q=${encodeURIComponent(searchQ.trim())}`
-      );
+      const base = isServer ? `/servers/${effectiveId}` : `/groups/${effectiveId}`;
+      const { data } = await axiosMessenger.get(`${base}/candidates?q=${encodeURIComponent(searchQ.trim())}`);
       setSearchResults(data?.candidates || []);
     } catch (e) {
       console.error('Candidates search failed', e);
@@ -185,7 +197,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
   // Автозагрузка кандидатов при открытии панели + debounce на ввод
   // ВАЖНО: этот useEffect ОБЯЗАН быть ДО early-return `if (!open) return null`
   useEffect(() => {
-    if (!open || !showAddMembers || effectiveType !== 'group') return;
+    if (!open || !showAddMembers || (effectiveType !== 'group' && effectiveType !== 'server')) return;
     const t = setTimeout(() => { doSearchUsers(); }, searchQ.trim() ? 350 : 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -203,9 +215,12 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
    // ───────── Переход к профилю участника ─────────
   const openUserProfile = (userId: number) => {
     if (Number(userId) === Number(currentUser?.id)) return;
-    // запоминаем контекст группы — владелец увидит «Удалить участника»
     if (isGroup && info) {
       setGroupCtx({ groupId: info.id, myRole: myRole || 'member' });
+    }
+    // из сервера — профиль покажет медиа из чатов сервера
+    if (isServer && info) {
+      setUserServerCtx(info.id);
     }
     setShowMore(false);
     setEditing(false);
@@ -263,22 +278,23 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
     if (!info || toAdd.length === 0) return;
     setAdding(true);
     try {
-      await axiosMessenger.post(`/groups/${info.id}/members`, { user_ids: toAdd });
-      toast.success(`Добавлено участников: ${toAdd.length}`);
+      if (isServer) {
+        // сервер → отправляем ПРИГЛАШЕНИЯ
+        await axiosMessenger.post(`/servers/${info.id}/invite`, { user_ids: toAdd });
+        toast.success(`Приглашения отправлены: ${toAdd.length}`);
+      } else {
+        await axiosMessenger.post(`/groups/${info.id}/members`, { user_ids: toAdd });
+        toast.success(`Добавлено участников: ${toAdd.length}`);
+        window.dispatchEvent(new CustomEvent('group-updated', { detail: { id: info.id, name: info.title, avatar_url: info.avatar_url } }));
+      }
       setShowAddMembers(false);
       setToAdd([]);
       setSearchResults([]);
       setSearchQ('');
-      await loadInfo();
-      // уведомляем список чатов / шапку, что состав группы изменился
-      window.dispatchEvent(
-        new CustomEvent('group-updated', {
-          detail: { id: info.id, name: info.title, avatar_url: info.avatar_url },
-        })
-      );
+      loadInfo();
     } catch (e: any) {
       console.error('Add members failed', e);
-      toast.error(e?.response?.data?.error || 'Не удалось добавить участников');
+      toast.error(e?.response?.data?.error || 'Не удалось добавить');
     } finally {
       setAdding(false);
     }
@@ -362,7 +378,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
   const counts = info?.folders || { media: 0, files: 0, links: 0, voices: 0 };
 
   // ═══════════ Панель добавления участников (внутри модалки) ═══════════
-  if (showAddMembers && isGroup) {
+  if (showAddMembers && (isGroup || isServer)) {
     return (
       <div className="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
         <div
@@ -374,7 +390,9 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
               <button onClick={() => setShowAddMembers(false)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
                 <ArrowLeft size={18} />
               </button>
-              <h3 className="text-base font-bold text-gray-900 dark:text-white">Добавить участников</h3>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                {isServer ? 'Пригласить на сервер' : 'Добавить участников'}
+              </h3>
             </div>
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
               <X size={18} />
@@ -442,7 +460,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
               className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {adding && <Loader2 size={15} className="animate-spin" />}
-              Добавить {toAdd.length > 0 ? `(${toAdd.length})` : ''}
+              {isServer ? 'Пригласить' : 'Добавить'} {toAdd.length > 0 ? `(${toAdd.length})` : ''}
             </button>
           </div>
         </div>
@@ -479,7 +497,7 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
               </button>
             </div>
 
-            {!loading && info && (
+            {!loading && info && !isChannel && !isServer && (
               <div className="relative">
                 <button
                   onClick={() => setShowMore((v) => !v)}
@@ -594,9 +612,19 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
           ) : (
             /* ───────── Просмотр ───────── */
             <div className="mt-1 flex flex-col items-center text-center">
-              <Avatar src={info.avatar_url} name={info.title} size={88} />
+              {isChannel ? (
+                <div className="w-[88px] h-[88px] rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-300">
+                  <Hash size={40} />
+                </div>
+              ) : (
+                <Avatar src={info.avatar_url} name={info.title} size={88} />
+              )}
               <h2 className="mt-3 text-lg font-bold text-gray-900 dark:text-white break-words">
-                {isUserLike ? info.user?.display_name || info.title : info.title}
+                {isUserLike
+                  ? info.user?.display_name || info.title
+                  : isChannel
+                    ? `#${info.title}`
+                    : info.title}
               </h2>
 
               {isUserLike && info.user ? (
@@ -619,25 +647,30 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
                     <ArrowRight size={15} />
                   </a>
                 </div>
+              ) : isChannel ? (
+                <p className="text-sm text-gray-500 mt-1">Текстовый канал · медиа ниже</p>
               ) : (
-                /* ═══ ГРУППА: участники в закруглённом прямоугольнике ═══ */
+                /* ═══ ГРУППА или СЕРВЕР ═══ */
                 <div className="w-full mt-1">
                   <p className="text-sm text-gray-500 flex items-center justify-center gap-1.5">
                     <UsersIcon size={14} />
                     {info.member_count} участников
                   </p>
+                  {isServer && info.created_at && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Создан {new Date(info.created_at).toLocaleDateString('ru-RU')}
+                    </p>
+                  )}
 
-                  {/* Закруглённый прямоугольник: список участников + кнопка добавления */}
                   <div className="mt-3 bg-gray-50 dark:bg-gray-800 rounded-2xl p-3">
-                    {/* Кнопка "Добавить участников" */}
                     <button
                       onClick={() => setShowAddMembers(true)}
-                      className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-sm font-semibold transition-colors"
+                      className="w-full mb-2 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-sm font-semibold transition-colors"
                     >
                       <UserPlus size={16} />
-                      Добавить участников
+                      {isServer ? 'Пригласить участников' : 'Добавить участников'}
                     </button>
-                    
+
                     <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-1 text-left">
                       {(info.members || []).map((m) => (
                         <button
@@ -712,11 +745,11 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
                     >
                       {item.type === 'video' ? (
                         <>
-                          <video src={item.url} className="w-full h-full object-cover" muted />
+                          <video src={resolveMediaUrl(item.url)} className="w-full h-full object-cover" muted />
                           <span className="absolute inset-0 flex items-center justify-center text-white/90">▶</span>
                         </>
                       ) : (
-                        <img src={item.url} alt={item.message || 'media'} className="w-full h-full object-cover" loading="lazy" />
+                        <img src={resolveMediaUrl(item.url)} alt={item.message || 'media'} className="w-full h-full object-cover" loading="lazy" />
                       )}
                     </a>
                   ))}
@@ -732,10 +765,10 @@ export const ChatInfoModal: React.FC<ChatInfoModalProps> = ({
                       </div>
                       <div className="min-w-0 flex-1">
                         {activeFolder === 'voices' ? (
-                          <audio src={item.url} controls className="w-full h-8" />
+                          <audio src={resolveMediaUrl(item.url)} controls className="w-full h-8" />
                         ) : (
                           <a
-                            href={item.url}
+                            href={resolveMediaUrl(item.url)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate block"

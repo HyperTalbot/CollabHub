@@ -172,6 +172,37 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
         );
         break;
 
+      // пользователя добавили на сервер → обновить список серверов
+      case 'servers_updated':
+        window.dispatchEvent(
+          new CustomEvent('servers-updated', { detail: data.payload })
+        );
+        break;
+
+      // ═══ НОВОЕ: приглашение на сервер ═══
+      case 'server_invite':
+        window.dispatchEvent(
+          new CustomEvent('server-invite', { detail: data.payload })
+        );
+        toast(`Вас пригласили на сервер «${data.payload?.server_name || ''}»`, {
+          icon: '📨',
+          duration: 6000,
+          position: 'top-right',
+        });
+        break;
+      
+      // ═══ НОВОЕ: новый запрос в друзья ═══
+      case 'friend_request':
+        window.dispatchEvent(
+          new CustomEvent('friend-request', { detail: data.payload })
+        );
+        toast('Новый запрос в друзья', {
+          icon: '👥',
+          duration: 5000,
+          position: 'top-right',
+        });
+        break;
+
       // пользователя удалили из группы 
       case 'removed_from_group':
         window.dispatchEvent(

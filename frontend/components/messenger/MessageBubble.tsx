@@ -3,6 +3,7 @@ import React, { useRef } from 'react';
 import { Reply, Copy, Trash2, Edit2, Pin, Forward, CheckCheck, X, Download, File, Video, Phone, PhoneMissed, PhoneOff, CheckCircle, Check, ListTodo, ListChecks } from 'lucide-react';
 import { Message } from '@/types/messenger';
 import toast from 'react-hot-toast';
+import { resolveMediaUrl } from '@/lib/mediaUrl';
 
 interface MessageBubbleProps {
   msg: Message;
@@ -61,7 +62,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   // История сообщений (REST) возвращает sender вложенным объектом,
   // а WS — плоскими sender_username/sender_avatar. Поддерживаем оба.
   const effectiveName = senderName || msg.sender_username || msg.sender?.username || msg.sender?.display_name;
-  const effectiveAvatar = senderAvatar || msg.sender_avatar || msg.sender?.avatar_url;
+  const effectiveAvatar = resolveMediaUrl(senderAvatar || msg.sender_avatar || msg.sender?.avatar_url);
   const effectiveSenderId = senderId ?? msg.sender_id;
 
   // ═══ Блок ответа: один или несколько источников ═══
@@ -288,15 +289,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               <div className="space-y-2">
                 {msg.attachment_type === 'image' ? (
                   <img
-                    src={msg.attachment_url}
+                    src={resolveMediaUrl(msg.attachment_url)}
                     alt="Изображение"
                     className="max-w-sm rounded-lg cursor-pointer hover:opacity-90"
-                    onClick={() => window.open(msg.attachment_url, '_blank')}
+                    onClick={() => window.open(resolveMediaUrl(msg.attachment_url), '_blank')}
                   />
                 ) : msg.attachment_type === 'video' ? (
-                  <video src={msg.attachment_url} controls className="max-w-sm rounded-lg" />
+                    <video src={resolveMediaUrl(msg.attachment_url)} controls className="max-w-sm rounded-lg" />
                 ) : msg.attachment_type === 'audio' ? (
-                  <audio src={msg.attachment_url} controls className="w-full" />
+                    <audio src={resolveMediaUrl(msg.attachment_url)} controls className="w-full" />
                 ) : (
                   <div
                     onClick={() => handleDownload(msg.attachment_url!, msg.content || 'file')}

@@ -9,6 +9,8 @@ import (
 	"backend/messenger-service/ws"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -91,6 +93,21 @@ func main() {
 		ws.ServeWs(hub, db.DB, c.Writer, c.Request, claims.UserID)
 	})
 
+	hub.BroadcastToAll([]byte(`{"type":"system","message":"Messenger Service Restarted"}`))
+
+	// ═══ Публичный прокси медиа (БЕЗ auth — теги <img> не могут слать заголовки).
+	// На прод-домене nginx проксирует /api/v1/messenger → :8086, поэтому
+	// /api/v1/messenger/media/image/x.jpg → localhost:8088/uploads/image/x.jpg
+	mediaProxy := &httputil.ReverseProxy{
+		Director: func(req *http.Request) {
+			req.URL.Scheme = "http"
+			req.URL.Host = "localhost:8088"
+			req.URL.Path = strings.Replace(req.URL.Path, "/api/v1/messenger/media", "/uploads", 1)
+			req.Host = "localhost:8088"
+		},
+	}
+	r.GET("/api/v1/messenger/media/*filepath", gin.WrapH(mediaProxy))
+
 	// === REST API ===
 	api := r.Group("/api/v1/messenger")
 	{
@@ -143,11 +160,35 @@ func main() {
 			protected.POST("/servers/:id/leave", serverHandler.LeaveServer)
 			protected.DELETE("/servers/:id", serverHandler.DeleteServer)
 
-			// --- КАНАЛЫ ---
-			protected.POST("/channels", channelHandler.CreateChannel)
+			// структура (папки + каналы), участники, кандидаты, порядок, закрепление
+			protected.GET("/servers/:id/structure", serverHandler.GetStructure)
+			protected.GET("/servers/:id/members", serverHandler.GetServerMembers)
+			protected.POST("/servers/:id/members", serverHandler.AddServerMembers)
+			protected.GET("/servers/:id/candidates", serverHandler.GetServerCandidates)
+			protected.POST("/servers/:id/reorder", channelHandler.ReorderItem)
+			protected.POST("/servers/:id/pin", channelHandler.TogglePinItem)
+
+			// приглашения на сервер
+			protected.POST("/servers/:id/invite", serverHandler.InviteToServer)
+			protected.GET("/server-invites", serverHandler.GetMyServerInvites)
+			protected.POST("/server-invites/:invite_id/accept", serverHandler.AcceptServerInvite)
+			protected.POST("/server-invites/:invite_id/reject", serverHandler.RejectServerInvite)
+
+			// папки
+			protected.POST("/servers/:id/folders", channelHandler.CreateFolder)
+			protected.PUT("/folders/:id", channelHandler.RenameFolder)
+			protected.DELETE("/folders/:id", channelHandler.DeleteFolder)
 			protected.GET("/servers/:id/channels", channelHandler.GetChannelsByServerID)
-			protected.GET("/channels/:id/messages", channelHandler.GetChannelMessages)
+			protected.POST("/channels", channelHandler.CreateChannel)
 			protected.DELETE("/channels/:id", channelHandler.DeleteChannel)
+			protected.PUT("/channels/:id", channelHandler.RenameChannel)
+			protected.GET("/channels/:id/messages", channelHandler.GetChannelMessages)
+
+			// --- КАНАЛЫ ---
+			// protected.POST("/channels", channelHandler.CreateChannel)
+			// protected.GET("/servers/:id/channels", channelHandler.GetChannelsByServerID)
+			// protected.GET("/channels/:id/messages", channelHandler.GetChannelMessages)
+			// protected.DELETE("/channels/:id", channelHandler.DeleteChannel)
 
 			// Голосовые каналы (специфичные роуты перед общими)
 			protected.POST("/channels/:id/voice/join", voiceChannelHandler.JoinVoiceChannel)

@@ -1,6 +1,7 @@
 // /components/messenger/ChatListSidebar.tsx
 import React, { useEffect, useState, useRef } from 'react';
 import axiosMessenger from '@/lib/axiosMessenger';
+import { resolveMediaUrl } from '@/lib/mediaUrl';
 import { ChatPreview, Conversation, Group, User } from '@/types/messenger';
 import { Search, Settings, Users, Circle } from 'lucide-react';
 
@@ -294,10 +295,10 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                       : 'bg-gradient-to-br from-blue-500 to-indigo-500'
                   }`}>
                     {chat.avatarUrl ? (
-                      <img 
-                        src={chat.avatarUrl} 
-                        alt={chat.title} 
-                        className="w-full h-full object-cover" 
+                      <img
+                        src={resolveMediaUrl(chat.avatarUrl)}
+                        alt={chat.title}
+                        className="w-full h-full object-cover"
                       />
                     ) : isGroup ? (
                       <Users size={20} />
@@ -358,7 +359,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
             <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white text-xs overflow-hidden flex-shrink-0">
               {currentUser?.avatar_url ? (
                 <img
-                  src={currentUser.avatar_url}
+                  src={resolveMediaUrl(currentUser.avatar_url)}
                   alt={currentUser.username || 'User'}
                   className="w-full h-full object-cover"
                 />

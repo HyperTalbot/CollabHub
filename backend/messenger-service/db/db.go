@@ -69,6 +69,8 @@ func InitDB() {
 		&models.ServerInvite{},
 		&models.GroupMember{},
 		&models.ConversationParticipant{},
+		&models.ChannelFolder{}, // НОВОЕ: папки каналов
+		&models.ServerInvitation{},
 	)
 	if err != nil {
 		log.Fatal("Migration failed (Relations): ", err)

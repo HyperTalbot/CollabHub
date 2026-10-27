@@ -11,33 +11,21 @@
 
 services:
   coturn:
-    image: coturn/coturn:4.6.3
+    image: coturn/coturn:4.6.2
     container_name: coturn
     restart: unless-stopped
     network_mode: host
     command:
       - -n
       - --log-file=stdout
-      - --listening-port=3478
-      # Публичный IP сервера (узнать на сервере: `curl -4 ifconfig.me`).
-      # Если публичный IP висит прямо на интерфейсе — указать его явно не вредно.
-      - --external-ip=5.188.75.162
-      - --fingerprint
       - --lt-cred-mech
-      - --user=collabhub:${TURN_PASSWORD}
       - --realm=collabhub.cloudpub.ru
+      - --listening-ip=0.0.0.0
+      - --listening-port=3478
+      - --external-ip=${TURN_EXTERNAL_IP}
       - --min-port=49152
-      - --max-port=49200
-      - --total-quota=200
-      - --user-quota=10
-      - --bps-capacity=0
+      - --max-port=49252
+      - --user=collabhub:${TURN_PASSWORD}
+      - --fingerprint
       - --no-multicast-peers
-      - --stale-nonce=600
       - --no-cli
-      - --no-tls
-      - --no-dtls
-    healthcheck:
-      test: ["CMD", "turnadmin", "-l"]
-      interval: 30s
-      timeout: 10s
-      retries: 3

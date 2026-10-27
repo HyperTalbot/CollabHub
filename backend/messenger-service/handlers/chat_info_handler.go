@@ -24,6 +24,77 @@ type ChatInfoHandler struct {
 	Hub *ws.Hub
 }
 
+type chatMediaItem struct {
+	ID         uint   `json:"id"`
+	URL        string `json:"url"`
+	Type       string `json:"type"` // image | video | audio | file | link
+	SenderName string `json:"sender_name"`
+	SenderID   uint   `json:"sender_id"`
+	Message    string `json:"message,omitempty"`
+	FileName   string `json:"file_name,omitempty"`
+	CreatedAt  string `json:"created_at"`
+}
+
+type chatFolderCounts struct {
+	Media  int `json:"media"`
+	Files  int `json:"files"`
+	Links  int `json:"links"`
+	Voices int `json:"voices"`
+}
+
+type chatUserInfo struct {
+	ID          uint   `json:"id"`
+	DisplayName string `json:"display_name"`
+	Username    string `json:"username"`
+	Email       string `json:"email,omitempty"`
+	Bio         string `json:"bio,omitempty"`
+	AvatarURL   string `json:"avatar_url"`
+}
+
+// Вспомогательные типы
+type GroupMember struct {
+	ID          uint   `json:"id"`
+	DisplayName string `json:"display_name"`
+	Username    string `json:"username"`
+	AvatarURL   string `json:"avatar_url"`
+	Role        string `json:"role"`
+}
+
+type folderCounts struct {
+	Media  int `json:"media"`
+	Files  int `json:"files"`
+	Links  int `json:"links"`
+	Voices int `json:"voices"`
+}
+
+type mediaItem struct {
+	ID         uint      `json:"id"`
+	URL        string    `json:"url"`
+	Type       string    `json:"type"`
+	SenderName string    `json:"sender_name"`
+	SenderID   uint      `json:"sender_id"`
+	Message    string    `json:"message,omitempty"`
+	FileName   string    `json:"file_name,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// chatInfoResponse — единый ответ для всех режимов (dm / group / user / channel / server)
+type chatInfoResponse struct {
+	Type        string            `json:"type"`
+	ID          uint              `json:"id"`
+	Title       string            `json:"title"`
+	AvatarURL   string            `json:"avatar_url"`
+	User        *chatUserInfo     `json:"user,omitempty"`
+	Members     []chatGroupMember `json:"members,omitempty"`
+	MemberCount int               `json:"member_count"`
+	CreatedAt   time.Time         `json:"created_at"`
+	Folders     chatFolderCounts  `json:"folders"`
+	Media       []chatMediaItem   `json:"media"`
+	Files       []chatMediaItem   `json:"files"`
+	Links       []chatMediaItem   `json:"links"`
+	Voices      []chatMediaItem   `json:"voices"`
+}
+
 // broadcastGroupUpdate — уведомляет всех участников группы об изменении
 // названия/аватарки, чтобы список чатов и шапка обновились в реальном времени.
 func broadcastGroupUpdate(hub *ws.Hub, db *gorm.DB, groupID uint, name, avatarURL string) {
@@ -221,7 +292,6 @@ func (h *ChatInfoHandler) UpdateGroupInfo(c *gin.Context) {
 	})
 }
 
-
 // canEditGroup — группа доступна всем участникам, но менять её настройки
 // может только владелец или админ.
 func canEditGroup(group models.Group, userID uint) bool {
@@ -234,33 +304,6 @@ func canEditGroup(group models.Group, userID uint) bool {
 		}
 	}
 	return false
-}
-
-type chatMediaItem struct {
-	ID            uint   `json:"id"`
-	URL           string `json:"url"`
-	Type          string `json:"type"` // image | video | audio | file | link
-	SenderName    string `json:"sender_name"`
-	SenderID      uint   `json:"sender_id"`
-	Message       string `json:"message,omitempty"`
-	FileName      string `json:"file_name,omitempty"`
-	CreatedAt     string `json:"created_at"`
-}
-
-type chatFolderCounts struct {
-	Media  int `json:"media"`
-	Files  int `json:"files"`
-	Links  int `json:"links"`
-	Voices int `json:"voices"`
-}
-
-type chatUserInfo struct {
-	ID          uint   `json:"id"`
-	DisplayName string `json:"display_name"`
-	Username    string `json:"username"`
-	Email       string `json:"email,omitempty"`
-	Bio         string `json:"bio,omitempty"`
-	AvatarURL   string `json:"avatar_url"`
 }
 
 // fetchUserBio вытаскивает bio из ответа auth-service (публичный роут
@@ -327,21 +370,6 @@ type chatGroupMember struct {
 	Username    string `json:"username"`
 	AvatarURL   string `json:"avatar_url"`
 	Role        string `json:"role"`
-}
-
-type chatInfoResponse struct {
-	Type        string            `json:"type"` // dm | group
-	ID          uint              `json:"id"`
-	Title       string            `json:"title"`
-	AvatarURL   string            `json:"avatar_url"`
-	User        *chatUserInfo     `json:"user,omitempty"`
-	Members     []chatGroupMember `json:"members,omitempty"`
-	MemberCount int               `json:"member_count"`
-	Folders     chatFolderCounts  `json:"folders"`
-	Media       []chatMediaItem   `json:"media"`
-	Files       []chatMediaItem   `json:"files"`
-	Links       []chatMediaItem   `json:"links"`
-	Voices      []chatMediaItem   `json:"voices"`
 }
 
 var urlRegexp = regexp.MustCompile(`https?://\S+`)
@@ -500,26 +528,33 @@ func (h *ChatInfoHandler) GetChatInfo(c *gin.Context) {
 	// :id здесь — это USER ID (не conversation id).
 	if chatType == "user" {
 		targetID := uint(id)
-
 		partner := h.resolveUserDetails(targetID)
+
+		var res *chatInfoResponse
 
 		// Ищем существующий DM-conversation между мной и этим пользователем,
 		// чтобы показать общий медиа-контент (если чата нет — папки пустые)
-		var convIDs []uint
-		h.DB.Table("conversation_participants AS cp1").
-			Select("cp1.conversation_id").
-			Joins("JOIN conversation_participants cp2 ON cp2.conversation_id = cp1.conversation_id").
-			Where("cp1.user_id = ? AND cp2.user_id = ?", userID, targetID).
-			Limit(1).
-			Scan(&convIDs)
-
-		var res *chatInfoResponse
-		if len(convIDs) > 0 {
-			res = h.buildResponse(h.loadMessages("conversation_id", convIDs[0]))
-			res.ID = convIDs[0]
-		} else {
-			res = h.buildResponse(nil)
+		// ═══ НОВОЕ: контент из СЕРВЕРА (если передан server_id) ═══
+		if serverIDStr := c.Query("server_id"); serverIDStr != "" {
+			res = h.buildResponse(h.loadServerUserMessages(serverIDStr, targetID))
 			res.ID = targetID
+		} else {
+			// прежний режим: общий DM-контент
+			var convIDs []uint
+			h.DB.Table("conversation_participants AS cp1").
+				Select("cp1.conversation_id").
+				Joins("JOIN conversation_participants cp2 ON cp2.conversation_id = cp1.conversation_id").
+				Where("cp1.user_id = ? AND cp2.user_id = ?", userID, targetID).
+				Limit(1).
+				Scan(&convIDs)
+
+			if len(convIDs) > 0 {
+				res = h.buildResponse(h.loadMessages("conversation_id", convIDs[0]))
+				res.ID = convIDs[0]
+			} else {
+				res = h.buildResponse(nil)
+				res.ID = targetID
+			}
 		}
 
 		res.Type = "user"
@@ -528,6 +563,109 @@ func (h *ChatInfoHandler) GetChatInfo(c *gin.Context) {
 		res.User = &partner
 		res.MemberCount = 0
 
+		c.JSON(http.StatusOK, res)
+		return
+	}
+
+	// ═══ НОВОЕ: РЕЖИМ "channel" — инфо о текстовом канале сервера ═══
+	if chatType == "channel" {
+		var channel models.Channel
+		if err := h.DB.First(&channel, id).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
+			return
+		}
+		var cnt int64
+		h.DB.Table("server_members").
+			Where("server_id = ? AND user_id = ?", channel.ServerID, userID).Count(&cnt)
+		if cnt == 0 {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		res := h.buildResponse(h.loadMessages("channel_id", channel.ID))
+		res.Type = "channel"
+		res.Title = channel.Name
+		res.CreatedAt = channel.CreatedAt
+		c.JSON(http.StatusOK, res)
+		return
+	}
+
+	// ═══ РЕЖИМ "channel" — инфо о текстовом канале сервера ═══
+	if chatType == "channel" {
+		var channel models.Channel
+		if err := h.DB.First(&channel, id).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
+			return
+		}
+		var cnt int64
+		h.DB.Table("server_members").
+			Where("server_id = ? AND user_id = ?", channel.ServerID, userID).Count(&cnt)
+		if cnt == 0 {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		res := h.buildResponse(h.loadMessages("channel_id", channel.ID))
+		res.Type = "channel"
+		res.Title = channel.Name
+		res.CreatedAt = channel.CreatedAt
+		c.JSON(http.StatusOK, res)
+		return
+	}
+
+	// ═══ РЕЖИМ "server" — инфо о сервере + агрегированный медиа-контент ═══
+	if chatType == "server" {
+		var server models.Server
+		if err := h.DB.First(&server, id).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+			return
+		}
+		var cnt int64
+		h.DB.Table("server_members").
+			Where("server_id = ? AND user_id = ?", id, userID).Count(&cnt)
+		if cnt == 0 {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		// все сообщения со ВСЕХ каналов сервера
+		var channelIDs []uint
+		h.DB.Model(&models.Channel{}).Where("server_id = ?", id).Pluck("id", &channelIDs)
+		var msgs []models.Message
+		if len(channelIDs) > 0 {
+			h.DB.Preload("Sender").
+				Where("channel_id IN ?", channelIDs).
+				Order("created_at desc").Limit(1000).Find(&msgs)
+			for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+				msgs[i], msgs[j] = msgs[j], msgs[i]
+			}
+		}
+		res := h.buildResponse(msgs)
+
+		// участники сервера
+		var memberIDs []uint
+		h.DB.Table("server_members").Where("server_id = ?", id).Pluck("user_id", &memberIDs)
+		res.Members = make([]chatGroupMember, 0, len(memberIDs))
+		for _, mid := range memberIDs {
+			u := h.resolveUserDetails(mid)
+			role := "member"
+			if server.OwnerID == mid {
+				role = "owner"
+			}
+			res.Members = append(res.Members, chatGroupMember{
+				ID:          mid,
+				DisplayName: u.DisplayName,
+				Username:    u.Username,
+				AvatarURL:   u.AvatarURL,
+				Role:        role,
+			})
+		}
+
+		res.Type = "server"
+		res.Title = server.Name
+		res.AvatarURL = server.AvatarURL
+		res.MemberCount = len(res.Members)
+		res.CreatedAt = server.CreatedAt
 		c.JSON(http.StatusOK, res)
 		return
 	}
@@ -616,4 +754,24 @@ func (h *ChatInfoHandler) loadMessages(scopeColumn string, scopeID uint) []model
 		Limit(2000).
 		Find(&messages)
 	return messages
+}
+
+// loadServerUserMessages — сообщения, которые пользователь отправил
+// во ВСЕХ каналах указанного сервера
+func (h *ChatInfoHandler) loadServerUserMessages(serverIDStr string, userID uint) []models.Message {
+	var channelIDs []uint
+	h.DB.Model(&models.Channel{}).Where("server_id = ?", serverIDStr).Pluck("id", &channelIDs)
+	if len(channelIDs) == 0 {
+		return nil
+	}
+	var msgs []models.Message
+	h.DB.Preload("Sender").
+		Where("channel_id IN ? AND sender_id = ?", channelIDs, userID).
+		Order("created_at desc").
+		Limit(1000).
+		Find(&msgs)
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+	return msgs
 }

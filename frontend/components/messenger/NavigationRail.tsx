@@ -1,7 +1,7 @@
-// /components/messenger/NavigationRail.tsx
 import React from 'react';
 import { MessageCircleMore, Plus, Users, MapPinned } from 'lucide-react';
 import { Server, ViewMode } from '@/types/messenger';
+import { resolveMediaUrl } from '@/lib/mediaUrl';
 
 interface NavigationRailProps {
   servers: Server[];
@@ -9,6 +9,7 @@ interface NavigationRailProps {
   selectedServerId: number | null;
   onNavigate: (view: ViewMode, serverId?: number) => void;
   onCreateClick: () => void;
+  friendsBadge?: number; // НОВОЕ: красный кружок с счётчиком запросов
 }
 
 export const NavigationRail: React.FC<NavigationRailProps> = ({
@@ -17,6 +18,7 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
   selectedServerId,
   onNavigate,
   onCreateClick,
+  friendsBadge = 0,
 }) => {
     const getBtnClass = (viewName: ViewMode) => `
     w-12 h-12 rounded-[24px] hover:rounded-[16px] flex items-center justify-center transition-all cursor-pointer shadow-sm text-lg font-bold group relative mb-2
@@ -32,9 +34,14 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
         <MessageCircleMore size={24} />
       </div>
 
-      {/* 2. ДРУЗЬЯ */}
+      {/* 2. ДРУЗЬЯ — с бейджем запросов */}
       <div onClick={() => onNavigate('friends')} className={getBtnClass('friends')} title="Список друзей">
         <Users size={24} />
+        {friendsBadge > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-gray-100 dark:border-gray-950 z-10">
+            {friendsBadge > 99 ? '99+' : friendsBadge}
+          </span>
+        )}
       </div>
 
       {/* 3. КАРТА */}
@@ -45,7 +52,7 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
       {/* Разделитель */}
       <div className="w-8 h-0.5 bg-gray-300 dark:bg-gray-800 rounded-full my-2"></div>
 
-      {/* СПИСОК СЕРВЕРОВ - key должен быть на самом верхнем элементе в map */}
+      {/* СПИСОК СЕРВЕРОВ */}
       <div className="flex-1 overflow-y-auto w-full flex flex-col items-center space-y-3 no-scrollbar pb-4">
         {servers.map((server) => (
           <div
@@ -58,7 +65,10 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
             title={server.name}
           >
             {server.avatar_url ? (
-              <img src={server.avatar_url} alt={server.name} className="w-full h-full object-cover rounded-[inherit]" />
+              <img 
+                src={resolveMediaUrl(server.avatar_url)} 
+                alt={server.name} 
+                className="w-full h-full object-cover rounded-[inherit]" />
             ) : (
               <span>{(server.name || "?").substring(0, 2).toUpperCase()}</span>
             )}
